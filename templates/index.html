@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shorts Stealth Pipeline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+    <!-- Header -->
+    <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-rose-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid fa-ghost text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+                        Shorts Stealth Pipeline
+                    </h1>
+                    <p class="text-xs text-slate-400">Automated YouTube Shorts Scraper & Anti-Detector</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+                    FFmpeg Engine Active
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        <!-- Controls & Search Bar Card -->
+        <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+                
+                <!-- Query Input -->
+                <div class="lg:col-span-6 space-y-2">
+                    <label class="block text-sm font-semibold text-slate-300">
+                        <i class="fa-solid fa-magnifying-glass text-indigo-400 mr-1"></i> Search Shorts Niche / Query
+                    </label>
+                    <div class="relative">
+                        <input type="text" id="searchInput" placeholder="e.g. gym motivation, tech gadgets, funny animals..."
+                            value="gym motivation"
+                            class="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-4 py-3 pl-11 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        <i class="fa-brands fa-youtube absolute left-4 top-3.5 text-red-500 text-lg"></i>
+                    </div>
+                </div>
+
+                <!-- Limit Selector -->
+                <div class="lg:col-span-2 space-y-2">
+                    <label class="block text-sm font-semibold text-slate-300">Top Shorts Count</label>
+                    <select id="limitSelect" class="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-3 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="5" selected>Top 5</option>
+                        <option value="10">Top 10</option>
+                        <option value="15">Top 15</option>
+                        <option value="25">Top 25</option>
+                    </select>
+                </div>
+
+                <!-- Perturbation Preset -->
+                <div class="lg:col-span-2 space-y-2">
+                    <label class="block text-sm font-semibold text-slate-300">
+                        <i class="fa-solid fa-shield-halved text-rose-400 mr-1"></i> Anti-Detection
+                    </label>
+                    <select id="presetSelect" class="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-3 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="subtle" selected>Subtle (Recommended)</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="aggressive">Aggressive</option>
+                    </select>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="lg:col-span-2 flex space-x-2">
+                    <button id="searchBtn" onclick="triggerSearch()"
+                        class="flex-1 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-medium py-3 px-3 rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-1.5 transition transform active:scale-98">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>Find</span>
+                    </button>
+                    <button id="stopAllBtn" onclick="stopAllProcessing()"
+                        class="bg-rose-600/80 hover:bg-rose-600 border border-rose-500/50 text-white font-medium py-3 px-3 rounded-xl shadow-lg shadow-rose-900/40 flex items-center justify-center space-x-1.5 transition transform active:scale-98"
+                        title="Stop all downloads and video obfuscation">
+                        <i class="fa-solid fa-hand"></i>
+                        <span>Stop</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Perturbation Options Bar -->
+            <div class="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-4">
+                <div class="flex items-center space-x-6">
+                    <label class="flex items-center space-x-2 cursor-pointer select-none">
+                        <input type="checkbox" id="mirrorToggle" class="w-4 h-4 rounded text-indigo-600 bg-slate-950 border-slate-700 focus:ring-indigo-500">
+                        <span>Horizontal Mirroring (Flip)</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer select-none">
+                        <input type="checkbox" id="autoProcessToggle" checked class="w-4 h-4 rounded text-indigo-600 bg-slate-950 border-slate-700 focus:ring-indigo-500">
+                        <span>Auto-Obfuscate on Download</span>
+                    </label>
+                </div>
+                <div class="flex items-center space-x-2 text-slate-400">
+                    <i class="fa-solid fa-circle-info text-indigo-400"></i>
+                    <span>Applies micro-crop, grain noise, speed shift & strips all tracking metadata</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Status Banner (Hidden by default) -->
+        <section id="statusBanner" class="hidden bg-indigo-950/50 border border-indigo-800/60 rounded-xl p-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i id="statusIcon" class="fa-solid fa-circle-notch fa-spin text-indigo-400 text-xl"></i>
+                <div>
+                    <h3 id="statusTitle" class="text-sm font-semibold text-indigo-200">Pipeline in progress...</h3>
+                    <p id="statusDesc" class="text-xs text-indigo-300/80">Extracting YouTube top performers</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <span id="statusCounter" class="text-xs font-mono bg-indigo-900/60 px-2.5 py-1 rounded-md text-indigo-200">0%</span>
+                <button id="bannerStopBtn" onclick="stopAllProcessing()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 shadow transition active:scale-95" title="Halt active pipeline">
+                    <i class="fa-solid fa-stop"></i>
+                    <span>Stop</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Content Tabs -->
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div class="flex space-x-4">
+                <button onclick="switchTab('results')" id="tabResults" class="font-semibold text-sm pb-2 border-b-2 border-indigo-500 text-white flex items-center space-x-2">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>Discovered Candidates</span>
+                    <span id="resultsCountBadge" class="ml-2 bg-indigo-900/80 text-indigo-300 text-xs px-2 py-0.5 rounded-full">0</span>
+                </button>
+                <button onclick="switchTab('processed')" id="tabProcessed" class="font-semibold text-sm pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center space-x-2">
+                    <i class="fa-solid fa-shield-check"></i>
+                    <span>Obfuscated Library</span>
+                    <span id="processedCountBadge" class="ml-2 bg-slate-800 text-slate-300 text-xs px-2 py-0.5 rounded-full">0</span>
+                </button>
+            </div>
+            <button onclick="loadCatalog()" class="text-xs text-slate-400 hover:text-indigo-400 flex items-center space-x-1">
+                <i class="fa-solid fa-rotate"></i>
+                <span>Refresh Library</span>
+            </button>
+        </div>
+
+        <!-- Video Cards Grid -->
+        <section id="videoGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Dynamically populated video cards -->
+        </section>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-16 text-slate-500 space-y-3">
+            <i class="fa-solid fa-film text-5xl text-slate-700"></i>
+            <p class="text-sm">No videos found yet. Type a search keyword above and click "Find Shorts".</p>
+        </div>
+    </main>
+
+    <!-- Video Preview Modal -->
+    <div id="videoModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                <h3 id="modalTitle" class="text-sm font-semibold text-slate-200 truncate pr-4">Video Preview</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-4 flex flex-col items-center bg-slate-950">
+                <video id="modalVideoPlayer" controls class="max-h-[65vh] w-auto rounded-lg shadow-lg border border-slate-800" src=""></video>
+                <div id="modalParams" class="mt-4 text-xs font-mono text-slate-400 bg-slate-900/90 p-3 rounded-lg w-full border border-slate-800">
+                    <!-- Perturbation parameters display -->
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-800 flex justify-end space-x-3">
+                <a id="modalDownloadBtn" href="#" download class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium py-2 px-4 rounded-lg flex items-center space-x-2">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Download Stealth MP4</span>
+                </a>
+                <button onclick="closeModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium py-2 px-4 rounded-lg">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

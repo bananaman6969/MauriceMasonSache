@@ -1,0 +1,32 @@
+﻿# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest & testing
+.pytest_cache/
+.pytest_temp/
+.coverage
+htmlcov/
+
+# Local databases and catalog
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Large video outputs
+output/raw/*.mp4
+output/raw/*.mkv
+output/raw/*.webm
+output/processed/*.mp4
+output/processed/*.mkv
+output/processed/*.webm
+output/*.mp4
+
+# OS and environment
+.env
+.venv/
+venv/
+*.log
+.DS_Store
+Thumbs.db
