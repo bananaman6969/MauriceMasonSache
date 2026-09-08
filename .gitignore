@@ -23,6 +23,16 @@ htmlcov/
 **/output/processed/*.webm
 **/output/*.mp4
 
+# Reddit Story Shorts large media & temporary caches
+**/assets/gameplay/*.mp4
+**/assets/gameplay/*.mkv
+**/assets/gameplay/*.webm
+**/assets/gameplay/*.part
+**/temp/*
+!**/temp/.gitkeep
+!**/assets/gameplay/.gitkeep
+!**/output/.gitkeep
+
 # OS and environment
 .env
 .venv/
