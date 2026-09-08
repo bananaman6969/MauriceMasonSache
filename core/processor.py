@@ -111,8 +111,9 @@ def build_filter_complex(params: Dict[str, Any]) -> str:
     """Construct FFmpeg video and audio filter graph string."""
     v_filters = []
 
-    # Downscale oversized 4K inputs to standard 1080p width with proportional even height
+    # Downscale oversized 4K inputs to standard 1080p width with proportional even height and normalize to 30fps
     v_filters.append("scale='min(1080,iw)':-2")
+    v_filters.append("fps=30")
 
     if params.get("mirror"):
         v_filters.append("hflip")
@@ -128,7 +129,7 @@ def build_filter_complex(params: Dict[str, Any]) -> str:
 
     # Subtle luma film grain to defeat pHash / dHash without bitrate explosion
     noise = params["noise_sigma"]
-    v_filters.append(f"noise=c0s={noise}:c0f=t+u")
+    v_filters.append(f"noise=c0s={noise}:c0f=t")
 
     # Color, brightness, and contrast jitter
     contrast = params["contrast"]
@@ -163,9 +164,9 @@ async def process_video(
     # Audio resampling ensures audio and video stay perfectly synchronized
     audio_filter = f"atempo={params['speed']},aresample=async=1"
 
-    # Leave at least 2 cores free for system responsiveness
+    # Utilize all CPU cores at full clock speed
     cpu_count = os.cpu_count() or 4
-    threads_to_use = max(1, min(cpu_count - 2, 4))
+    threads_to_use = cpu_count
 
     # Write to a temporary file first to prevent partial/corrupted files if interrupted
     tmp_output_path = os.path.join(target_dir, f".tmp_{uuid.uuid4().hex[:8]}_{os.path.basename(output_path)}")
@@ -182,7 +183,7 @@ async def process_video(
         "-metadata", f"comment={params['unique_id']}",
         "-metadata", f"creation_time={params['creation_time']}",
         "-c:v", "libx264",
-        "-preset", "veryfast",
+        "-preset", "ultrafast",
         "-crf", "22",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
@@ -195,8 +196,6 @@ async def process_video(
     ]
 
     exec_kwargs = {}
-    if os.name == "nt":
-        exec_kwargs["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
 
     logger.info(f"Running FFmpeg obfuscation on {input_path} -> {output_path}")
     process = await asyncio.create_subprocess_exec(

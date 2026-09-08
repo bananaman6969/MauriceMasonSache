@@ -92,7 +92,8 @@ def download_short_sync(video_id: str, output_dir: str) -> str:
     video_url = f"https://www.youtube.com/shorts/{video_id}"
 
     ydl_opts = {
-        "format": "bestvideo[height<=1920][ext=mp4]+bestaudio[ext=m4a]/best[height<=1920][ext=mp4]/best[height<=1920]/best",
+        # Prefer H.264/AVC streams to avoid ultra-slow AV1 software decoding in FFmpeg
+        "format": "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best",
         "outtmpl": output_template,
         "quiet": True,
         "no_warnings": True,
