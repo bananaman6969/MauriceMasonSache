@@ -1,4 +1,4 @@
-﻿# Python bytecode & cache
+# Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -10,18 +10,18 @@ __pycache__/
 htmlcov/
 
 # Local databases and catalog
-data/*.db
-data/*.sqlite
-data/*.sqlite3
+**/data/*.db
+**/data/*.sqlite
+**/data/*.sqlite3
 
 # Large video outputs
-output/raw/*.mp4
-output/raw/*.mkv
-output/raw/*.webm
-output/processed/*.mp4
-output/processed/*.mkv
-output/processed/*.webm
-output/*.mp4
+**/output/raw/*.mp4
+**/output/raw/*.mkv
+**/output/raw/*.webm
+**/output/processed/*.mp4
+**/output/processed/*.mkv
+**/output/processed/*.webm
+**/output/*.mp4
 
 # OS and environment
 .env
