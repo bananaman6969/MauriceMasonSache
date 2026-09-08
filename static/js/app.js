@@ -239,11 +239,14 @@ function createVideoCard(v) {
 
         <div class="p-3 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between gap-2">
             ${isProcessed
-                ? `<a href="/api/download/${v.id}" download class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 shadow transition">
+                ? `<a href="/api/download/${v.id}" download class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 shadow transition">
                      <i class="fa-solid fa-download"></i>
                      <span>Download MP4</span>
-                   </a>`
-                : `<button onclick="processSingleVideo('${v.id}')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 shadow transition">
+                   </a>
+                   <button onclick="deleteVideo('${v.id}', event)" class="bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white text-xs font-medium py-2 px-3 rounded-lg flex items-center justify-center transition border border-slate-700/80 hover:border-rose-500 shadow" title="Delete obfuscated video">
+                     <i class="fa-solid fa-trash-can"></i>
+                   </button>`
+                : `<button id="procBtn_${v.id}" onclick="processSingleVideo('${v.id}')" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 shadow transition">
                      <i class="fa-solid fa-wand-magic-sparkles"></i>
                      <span>Apply Noise & Download</span>
                    </button>`
@@ -254,9 +257,52 @@ function createVideoCard(v) {
     return card;
 }
 
+let currentModalVideoId = null;
+
+async function deleteVideo(videoId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    if (!confirm('Are you sure you want to delete this obfuscated video?')) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/videos/${videoId}`, {
+            method: 'DELETE'
+        });
+        const result = await response.json();
+        if (result.success) {
+            discoveredVideos = discoveredVideos.filter(v => v.id !== videoId);
+            processedVideos = processedVideos.filter(v => v.id !== videoId);
+            renderGrid();
+            updateBadges();
+            const modal = document.getElementById('videoModal');
+            if (modal && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        } else {
+            alert('Failed to delete video: ' + (result.detail || 'Unknown error'));
+        }
+    } catch (err) {
+        alert('Failed to delete video: ' + err.message);
+    }
+}
+
+function deleteCurrentModalVideo() {
+    if (currentModalVideoId) {
+        deleteVideo(currentModalVideoId);
+    }
+}
+
 async function processSingleVideo(videoId) {
     const preset = document.getElementById('presetSelect').value;
     const mirror = document.getElementById('mirrorToggle').checked;
+
+    const btn = document.getElementById(`procBtn_${videoId}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Starting...</span>';
+    }
 
     try {
         const response = await fetch('/api/process', {
@@ -270,22 +316,31 @@ async function processSingleVideo(videoId) {
         });
         const result = await response.json();
         if (result.success) {
-            await loadCatalog();
-            switchTab('processed');
+            // Live SSE handles progress and switching
         } else {
-            alert('Processing error: ' + result.error);
+            alert('Processing error: ' + (result.message || result.error));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>Apply Noise & Download</span>';
+            }
         }
     } catch (err) {
         alert('Failed to process video: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i><span>Apply Noise & Download</span>';
+        }
     }
 }
 
 function openPreview(videoId, type, titleEnc) {
+    currentModalVideoId = videoId;
     const modal = document.getElementById('videoModal');
     const player = document.getElementById('modalVideoPlayer');
     const title = document.getElementById('modalTitle');
     const downloadBtn = document.getElementById('modalDownloadBtn');
     const paramsDiv = document.getElementById('modalParams');
+    const deleteBtn = document.getElementById('modalDeleteBtn');
 
     title.textContent = decodeURIComponent(titleEnc) || 'Video Preview';
     player.src = `/api/stream/${type}/${videoId}`;
