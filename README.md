@@ -23,7 +23,25 @@ An automated pipeline designed to search and scrape top-performing YouTube Short
 
 ## Quickstart
 
-### 1. Launch the Web Dashboard
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/bananaman6969/MauriceMasonSache.git
+cd MauriceMasonSache
+
+# Optional: Create and activate virtual environment
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
+```
+
+> **Note**: No manual FFmpeg installation is required. The pipeline uses `static-ffmpeg` which automatically sets up FFmpeg on first launch.
+
+### 2. Launch the Web Dashboard
 ```bash
 python app.py
 ```
