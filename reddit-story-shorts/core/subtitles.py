@@ -45,7 +45,7 @@ def generate_karaoke_ass(
     outline_color: str = "&H00000000&",  # Solid Black
     outline_width: int = 4,
     shadow_depth: int = 2,
-    margin_v: int = 550,  # Middle/lower vertical margin (above TikTok UI)
+    margin_v: int = 880,  # Centered vertically in 1080x1920 (Y ≈ 960-1040)
     uppercase: bool = True,
 ) -> str:
     """Generate TikTok-style word-by-word highlighted ASS subtitles.

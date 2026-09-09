@@ -61,6 +61,50 @@ def format_score(score: int) -> str:
     return str(score)
 
 
+def draw_snoo_avatar(draw: ImageDraw.ImageDraw, x: int, y: int, size: int = 54):
+    """Draw an authentic Reddit Snoo alien avatar."""
+    draw.ellipse([(x, y), (x + size, y + size)], fill=(255, 69, 0, 255))
+    cx = x + size // 2
+    cy = y + size // 2 + 2
+    # Ears
+    draw.ellipse([(cx - 20, cy - 8), (cx - 12, cy)], fill=(255, 255, 255, 255))
+    draw.ellipse([(cx + 12, cy - 8), (cx + 20, cy)], fill=(255, 255, 255, 255))
+    # Head oval
+    draw.ellipse([(cx - 15, cy - 9), (cx + 15, cy + 9)], fill=(255, 255, 255, 255))
+    # Antenna
+    draw.line([(cx, cy - 9), (cx + 6, cy - 18)], fill=(255, 255, 255, 255), width=2)
+    draw.ellipse([(cx + 4, cy - 22), (cx + 10, cy - 16)], fill=(255, 255, 255, 255))
+    # Eyes (Orange dots)
+    draw.ellipse([(cx - 8, cy - 2), (cx - 4, cy + 2)], fill=(255, 69, 0, 255))
+    draw.ellipse([(cx + 4, cy - 2), (cx + 8, cy + 2)], fill=(255, 69, 0, 255))
+    # Smile
+    draw.arc([(cx - 6, cy + 1), (cx + 6, cy + 6)], start=10, end=170, fill=(26, 26, 27, 255), width=2)
+
+
+def draw_comment_icon(draw: ImageDraw.ImageDraw, x: int, y: int, size: int = 18):
+    color = (215, 218, 220, 255)
+    w = size
+    h = int(size * 0.75)
+    draw.rounded_rectangle([(x, y), (x + w, y + h)], radius=3, outline=color, width=2)
+    draw.polygon([(x + 3, y + h), (x + 3, y + h + 5), (x + 9, y + h)], fill=color)
+
+
+def draw_share_icon(draw: ImageDraw.ImageDraw, x: int, y: int, size: int = 18):
+    color = (215, 218, 220, 255)
+    draw.arc([(x, y + 4), (x + size - 2, y + size + 6)], start=180, end=270, fill=color, width=2)
+    draw.polygon([(x + size, y + 2), (x + size - 8, y - 2), (x + size - 8, y + 6)], fill=color)
+
+
+def draw_upvote_arrow(draw: ImageDraw.ImageDraw, x: int, y: int, w: int = 14, h: int = 12):
+    color = (160, 163, 166, 255)
+    draw.polygon([(x + w // 2, y), (x, y + h), (x + w, y + h)], fill=color)
+
+
+def draw_downvote_arrow(draw: ImageDraw.ImageDraw, x: int, y: int, w: int = 14, h: int = 12):
+    color = (160, 163, 166, 255)
+    draw.polygon([(x, y), (x + w, y), (x + w // 2, y + h)], fill=color)
+
+
 def generate_reddit_title_card(
     subreddit: str,
     author: str,
@@ -69,124 +113,149 @@ def generate_reddit_title_card(
     num_comments: int,
     output_path: str,
     card_width: int = 960,
-    bg_color: Tuple[int, int, int, int] = (26, 26, 27, 240),  # Reddit Dark
+    bg_color: Tuple[int, int, int, int] = (26, 26, 27, 245),  # Reddit Dark
     border_color: Tuple[int, int, int, int] = (52, 53, 54, 255),
-    corner_radius: int = 24,
+    corner_radius: int = 22,
 ) -> str:
-    """Generate a Reddit dark-mode styled title card image (PNG with transparency).
-    
-    Args:
-        subreddit: e.g. 'r/AmItheAsshole'
-        author: e.g. 'Throwaway123'
-        title: Post title
-        score: Upvote count
-        num_comments: Comment count
-        output_path: Path to save PNG
-        
-    Returns:
-        Absolute path to generated PNG.
-    """
+    """Generate an authentic Reddit screenshot-styled title card image with drop shadow."""
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
+    shadow_margin = 16
+    inner_card_w = card_width - (shadow_margin * 2)
+    pad = 32
+
     # Fonts
-    sub_font = get_default_font(30, bold=True)
-    meta_font = get_default_font(24, bold=False)
-    title_font = get_default_font(38, bold=True)
-    badge_font = get_default_font(24, bold=True)
+    sub_font = get_default_font(28, bold=True)
+    meta_font = get_default_font(22, bold=False)
+    title_font = get_default_font(36, bold=True)
+    badge_font = get_default_font(22, bold=True)
+    join_font = get_default_font(22, bold=True)
 
     # Temporary canvas to measure text
-    temp_img = Image.new("RGBA", (card_width, 1000), (0, 0, 0, 0))
+    temp_img = Image.new("RGBA", (inner_card_w, 1200), (0, 0, 0, 0))
     temp_draw = ImageDraw.Draw(temp_img)
 
-    content_width = card_width - 80  # 40px padding on each side
+    content_width = inner_card_w - (pad * 2)
     wrapped_title = wrap_text(title, title_font, content_width, temp_draw)
-    
-    # Cap title lines to 5 lines max to avoid giant cards
     if len(wrapped_title) > 5:
         wrapped_title = wrapped_title[:5]
         wrapped_title[-1] += "..."
 
-    line_height = 48
+    line_height = 46
     title_height = len(wrapped_title) * line_height
 
-    # Total card height: top_padding (40) + header (60) + spacing (20) + title_height + spacing (30) + footer (40) + bottom_padding (35)
-    card_height = 40 + 60 + 20 + title_height + 30 + 40 + 35
+    inner_card_h = pad + 54 + 18 + title_height + 20 + 44 + pad
+    total_w = card_width
+    total_h = inner_card_h + (shadow_margin * 2)
 
-    # Create final card image
-    card = Image.new("RGBA", (card_width, card_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(card)
+    # Canvas
+    card = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
 
-    # Draw rounded rectangle background with subtle border
+    # 1. Soft Realistic Drop Shadow
+    from PIL import ImageFilter
+    shadow_mask = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
+    sdraw = ImageDraw.Draw(shadow_mask)
+    sdraw.rounded_rectangle(
+        [(shadow_margin, shadow_margin + 6), (shadow_margin + inner_card_w, shadow_margin + inner_card_h + 6)],
+        radius=corner_radius,
+        fill=(0, 0, 0, 150),
+    )
+    shadow_blur = shadow_mask.filter(ImageFilter.GaussianBlur(12))
+    card.paste(shadow_blur, (0, 0), shadow_blur)
+
+    # 2. Main Card Body
+    card_layer = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(card_layer)
+
+    bx1 = shadow_margin
+    by1 = shadow_margin
+    bx2 = shadow_margin + inner_card_w
+    by2 = shadow_margin + inner_card_h
+
     draw.rounded_rectangle(
-        [(0, 0), (card_width - 1, card_height - 1)],
+        [(bx1, by1), (bx2, by2)],
         radius=corner_radius,
         fill=bg_color,
         outline=border_color,
         width=2,
     )
 
-    # --- Header: Reddit Icon + Subreddit + Author ---
-    icon_x = 40
-    icon_y = 35
-    icon_size = 50
+    # --- Header: Snoo Avatar + Subreddit + Time + Author + Join Button ---
+    avatar_x = bx1 + pad
+    avatar_y = by1 + pad
+    draw_snoo_avatar(draw, avatar_x, avatar_y, 54)
 
-    # Draw Reddit Orange circular badge
-    draw.ellipse(
-        [(icon_x, icon_y), (icon_x + icon_size, icon_y + icon_size)],
-        fill=(255, 69, 0, 255),
-    )
-    # White 'r/' letter inside icon
-    r_font = get_default_font(28, bold=True)
-    draw.text((icon_x + 13, icon_y + 8), "r/", font=r_font, fill=(255, 255, 255, 255))
+    header_text_x = avatar_x + 54 + 14
+    clean_sub = subreddit if subreddit.startswith("r/") else f"r/{subreddit}"
+    draw.text((header_text_x, avatar_y + 2), clean_sub, font=sub_font, fill=(215, 218, 220, 255))
 
-    # Subreddit name & Meta
-    header_text_x = icon_x + icon_size + 18
-    draw.text(
-        (header_text_x, icon_y + 2),
-        subreddit if subreddit.startswith("r/") else f"r/{subreddit}",
-        font=sub_font,
-        fill=(215, 218, 220, 255),
-    )
+    sub_bbox = draw.textbbox((header_text_x, avatar_y + 2), clean_sub, font=sub_font)
+    dot_x = sub_bbox[2] + 10
+    draw.text((dot_x, avatar_y + 5), "•  5 hr. ago", font=meta_font, fill=(129, 131, 132, 255))
+    clean_author = author if author.startswith("u/") else f"u/{author}"
+    draw.text((header_text_x, avatar_y + 32), clean_author, font=meta_font, fill=(129, 131, 132, 255))
 
-    meta_text = f"Posted by u/{author} • 14h ago"
-    draw.text(
-        (header_text_x, icon_y + 36),
-        meta_text,
-        font=meta_font,
-        fill=(129, 131, 132, 255),
+    # Right side: Blue Join Button + Meatball Menu
+    join_w = 80
+    join_h = 34
+    join_x = bx2 - pad - join_w - 36
+    join_y = avatar_y + 8
+    draw.rounded_rectangle(
+        [(join_x, join_y), (join_x + join_w, join_y + join_h)],
+        radius=17,
+        fill=(0, 121, 211, 255),  # Reddit Blue
     )
+    draw.text((join_x + 18, join_y + 6), "Join", font=join_font, fill=(255, 255, 255, 255))
+    draw.text((bx2 - pad - 24, avatar_y + 8), "•••", font=get_default_font(24, bold=True), fill=(129, 131, 132, 255))
 
     # --- Post Title ---
-    title_y = icon_y + icon_size + 25
+    title_y = avatar_y + 54 + 20
     for line in wrapped_title:
-        draw.text(
-            (40, title_y),
-            line,
-            font=title_font,
-            fill=(255, 255, 255, 255),
-        )
+        draw.text((avatar_x, title_y), line, font=title_font, fill=(242, 244, 245, 255))
         title_y += line_height
 
-    # --- Footer: Upvotes & Comments Badges ---
-    footer_y = title_y + 15
+    # --- Footer Action Bar: Upvotes, Comments, Share ---
+    foot_y = title_y + 16
 
-    # Upvotes Pill
-    score_str = f"▲  {format_score(score)}"
+    # 1. Vote Pill: [ ▲ 38.4k ▼ ]
+    vote_w = 175
     draw.rounded_rectangle(
-        [(40, footer_y), (180, footer_y + 42)],
-        radius=21,
-        fill=(40, 42, 44, 255),
+        [(avatar_x, foot_y), (avatar_x + vote_w, foot_y + 44)],
+        radius=22,
+        fill=(39, 41, 43, 255),
+        outline=(52, 53, 54, 200),
+        width=1,
     )
-    draw.text((56, footer_y + 8), score_str, font=badge_font, fill=(215, 218, 220, 255))
+    draw_upvote_arrow(draw, avatar_x + 18, foot_y + 16, w=14, h=12)
+    draw.text((avatar_x + 44, foot_y + 9), format_score(score), font=badge_font, fill=(215, 218, 220, 255))
+    draw_downvote_arrow(draw, avatar_x + 140, foot_y + 16, w=14, h=12)
 
-    # Comments Pill
-    comments_str = f"💬  {format_score(num_comments)}"
+    # 2. Comments Pill: [ 💬 4.1k ]
+    comm_x = avatar_x + vote_w + 14
+    comm_w = 145
     draw.rounded_rectangle(
-        [(195, footer_y), (335, footer_y + 42)],
-        radius=21,
-        fill=(40, 42, 44, 255),
+        [(comm_x, foot_y), (comm_x + comm_w, foot_y + 44)],
+        radius=22,
+        fill=(39, 41, 43, 255),
+        outline=(52, 53, 54, 200),
+        width=1,
     )
-    draw.text((211, footer_y + 8), comments_str, font=badge_font, fill=(215, 218, 220, 255))
+    draw_comment_icon(draw, comm_x + 20, foot_y + 14, size=18)
+    draw.text((comm_x + 52, foot_y + 9), format_score(num_comments), font=badge_font, fill=(215, 218, 220, 255))
 
+    # 3. Share Pill: [ ↗ Share ]
+    share_x = comm_x + comm_w + 14
+    share_w = 140
+    draw.rounded_rectangle(
+        [(share_x, foot_y), (share_x + share_w, foot_y + 44)],
+        radius=22,
+        fill=(39, 41, 43, 255),
+        outline=(52, 53, 54, 200),
+        width=1,
+    )
+    draw_share_icon(draw, share_x + 20, foot_y + 13, size=18)
+    draw.text((share_x + 50, foot_y + 9), "Share", font=badge_font, fill=(215, 218, 220, 255))
+
+    card.paste(card_layer, (0, 0), card_layer)
     card.save(output_path, "PNG")
     return os.path.abspath(output_path)
