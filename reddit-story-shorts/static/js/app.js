@@ -107,8 +107,24 @@ async function fetchPostByUrl() {
         const data = await res.json();
         if (data.success && data.post) {
             selectStory(data.post);
+            if (data.post.needs_body || !data.post.body) {
+                const bodyEl = document.getElementById("editor-body");
+                if (bodyEl) {
+                    bodyEl.placeholder = "Title extracted from URL! Paste the story narrative body text here...";
+                    bodyEl.focus();
+                    bodyEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+            }
         } else {
-            alert("Error loading Reddit post: " + (data.error || "Post not found"));
+            alert(
+                "Reddit's anti-bot policy blocked direct automated access to this URL.\n\n" +
+                "Quick Fix: Since you have the story open in your browser, simply copy the title and story text directly into the Script Editor below!"
+            );
+            const titleEl = document.getElementById("editor-title");
+            if (titleEl) {
+                titleEl.focus();
+                titleEl.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
         }
     } catch (err) {
         alert("Network error: " + err.message);
