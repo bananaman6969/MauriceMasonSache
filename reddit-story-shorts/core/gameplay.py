@@ -5,6 +5,9 @@ import json
 import random
 import logging
 import subprocess
+import tempfile
+import shutil
+from functools import lru_cache
 from typing import List, Dict, Any, Optional, Tuple
 from core.ffmpeg_manager import get_ffmpeg_paths
 
@@ -20,13 +23,13 @@ GAMEPLAY_PRESETS = [
     {
         "id": "subway_surfers",
         "title": "Subway Surfers Gameplay",
-        "url": "https://www.youtube.com/watch?v=u7kdmn30OGg",
+        "url": "https://www.youtube.com/watch?v=QPW3XwBoQlw",
         "category": "Mobile",
     },
     {
         "id": "gta_mega_ramp",
         "title": "GTA 5 Mega Ramp Stunts",
-        "url": "https://www.youtube.com/watch?v=F3z394lQ59w",
+        "url": "https://www.youtube.com/watch?v=awJz5HaQUZA",
         "category": "GTA 5",
     },
 ]
@@ -42,6 +45,12 @@ def get_gameplay_dir() -> str:
 
 def probe_video_metadata(video_path: str) -> Dict[str, Any]:
     """Retrieve video duration, width, height, and fps using ffprobe."""
+    stat = os.stat(video_path)
+    return dict(_probe_video_metadata(os.path.abspath(video_path), stat.st_size, stat.st_mtime_ns))
+
+
+@lru_cache(maxsize=128)
+def _probe_video_metadata(video_path: str, size: int, modified: int) -> Dict[str, Any]:
     _, ffprobe_cmd = get_ffmpeg_paths()
     cmd = [
         ffprobe_cmd,
@@ -65,6 +74,8 @@ def probe_video_metadata(video_path: str) -> Dict[str, Any]:
 
         width = int(video_stream.get("width", 1080))
         height = int(video_stream.get("height", 1920))
+        numerator, denominator = video_stream.get("r_frame_rate", "0/1").split("/")
+        fps = float(numerator) / float(denominator) if float(denominator) else 0.0
 
         return {
             "path": os.path.abspath(video_path),
@@ -72,6 +83,7 @@ def probe_video_metadata(video_path: str) -> Dict[str, Any]:
             "duration": duration,
             "width": width,
             "height": height,
+            "fps": fps,
             "size_bytes": os.path.getsize(video_path) if os.path.exists(video_path) else 0,
         }
     except Exception as err:
@@ -100,7 +112,10 @@ def list_available_gameplay_videos() -> List[Dict[str, Any]]:
         if ext in allowed_exts:
             full_path = os.path.join(gameplay_dir, file_name)
             meta = probe_video_metadata(full_path)
-            videos.append(meta)
+            if meta["duration"] > 0:
+                preset = next((p for p in GAMEPLAY_PRESETS if os.path.splitext(file_name)[0] == p["id"]), None)
+                meta["display_name"] = preset["title"] if preset else file_name
+                videos.append(meta)
 
     return videos
 
@@ -127,36 +142,46 @@ def download_youtube_gameplay(
 ) -> str:
     """Download gameplay video from YouTube using yt-dlp."""
     import yt_dlp
-    from yt_dlp.utils import download_range_func
 
     gameplay_dir = get_gameplay_dir()
-    output_template = (
-        os.path.join(gameplay_dir, f"{custom_name}.%(ext)s")
-        if custom_name
-        else os.path.join(gameplay_dir, "%(title)s.%(ext)s")
-    )
-
     ffmpeg_cmd, _ = get_ffmpeg_paths()
 
     ydl_opts = {
-        "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "outtmpl": output_template,
+        "format": "bestvideo[ext=mp4][width<=1280][height<=1280]+bestaudio[ext=m4a]/best[ext=mp4][width<=1280][height<=1280]/best[width<=1280][height<=1280]",
         "quiet": True,
         "no_warnings": True,
         "merge_output_format": "mp4",
         "ffmpeg_location": os.path.dirname(ffmpeg_cmd),
+        "noplaylist": True,
+        "socket_timeout": 15,
+        "retries": 2,
+        "extractor_retries": 1,
     }
 
-    if max_duration and max_duration > 0:
-        ydl_opts["download_ranges"] = download_range_func(None, [(0, max_duration)])
-        ydl_opts["force_keyframes_at_cuts"] = True
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        # In case merging produced .mp4
-        mp4_filename = os.path.splitext(filename)[0] + ".mp4"
-        if os.path.exists(mp4_filename):
-            return os.path.abspath(mp4_filename)
-        return os.path.abspath(filename)
+    # Download locally before trimming: FFmpeg remote range requests can stall.
+    pending_dir = os.path.join(gameplay_dir, ".downloads")
+    os.makedirs(pending_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=pending_dir) as staging:
+        ydl_opts["outtmpl"] = os.path.join(staging, "gameplay.%(ext)s")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            mp4_filename = os.path.splitext(filename)[0] + ".mp4"
+            if os.path.exists(mp4_filename):
+                filename = mp4_filename
+            final_name = custom_name or yt_dlp.utils.sanitize_filename(info.get("title", "gameplay"), restricted=True)
+            if os.path.basename(final_name) != final_name or final_name in (".", ".."):
+                raise ValueError("Invalid gameplay filename")
+            final_path = os.path.join(gameplay_dir, final_name + ".mp4")
+            ready_path = os.path.join(staging, "ready.mp4")
+            if max_duration and max_duration > 0:
+                subprocess.run([ffmpeg_cmd, "-y", "-v", "error", "-i", filename,
+                    "-t", str(max_duration), "-c", "copy", "-movflags", "+faststart", ready_path],
+                    check=True, capture_output=True, timeout=120)
+            else:
+                shutil.copyfile(filename, ready_path)
+            if probe_video_metadata(ready_path)["duration"] <= 0:
+                raise RuntimeError("Downloaded gameplay is not a playable video")
+            os.replace(ready_path, final_path)
+            return os.path.abspath(final_path)
 

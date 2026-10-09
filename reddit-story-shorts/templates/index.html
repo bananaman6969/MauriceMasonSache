@@ -108,15 +108,21 @@
           <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1.5">Subreddit</label>
             <select id="sub-select" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-reddit">
-              {% for sub in subreddits %}
-              <option value="{{ sub }}">r/{{ sub }}</option>
-              {% endfor %}
+              <option value="AmItheAsshole">r/AmItheAsshole</option>
+              <option value="AskReddit">r/AskReddit</option>
+              <option value="tifu">r/tifu</option>
+              <option value="confession">r/confession</option>
+              <option value="TrueOffMyChest">r/TrueOffMyChest</option>
+              <option value="stories">r/stories</option>
+              <option value="pettyrevenge">r/pettyrevenge</option>
+              <option value="relationship_advice">r/relationship_advice</option>
             </select>
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1.5">Sort Method</label>
             <select id="sort-select" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-reddit">
               <option value="hot">Hot</option>
+              <option value="new">Newest</option>
               <option value="top">Top Today</option>
               <option value="top_week">Top This Week</option>
             </select>
@@ -130,7 +136,7 @@
             </select>
           </div>
           <div class="flex items-end">
-            <button onclick="fetchPosts()" id="fetch-posts-btn" class="w-full bg-reddit hover:bg-orange-600 transition font-bold py-2 px-4 rounded-lg text-sm flex items-center justify-center space-x-2">
+            <button type="button" id="fetch-posts-btn" class="w-full bg-reddit hover:bg-orange-600 transition font-bold py-2 px-4 rounded-lg text-sm flex items-center justify-center space-x-2">
               <i class="fa-solid fa-magnifying-glass"></i>
               <span>Fetch Stories</span>
             </button>
@@ -138,6 +144,7 @@
         </div>
 
         <!-- Stories Grid / Results -->
+        <p id="reddit-source-status" class="text-xs text-gray-400" aria-live="polite">Fetching fresh posts from Reddit RSS…</p>
         <div id="posts-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[480px] overflow-y-auto p-1">
           <div class="col-span-full py-12 text-center text-gray-500 text-sm">
             Click "Fetch Stories" above to load the latest trending Reddit posts.
@@ -216,7 +223,7 @@
           <span class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 font-black flex items-center justify-center text-sm">3</span>
           <div>
             <h2 class="text-base font-bold">Voiceover & Audio Mixer</h2>
-            <p class="text-xs text-gray-400">Edge-TTS neural voices and ducked background audio</p>
+            <p class="text-xs text-gray-400">Neural voices with consistent loudness and automatic background ducking</p>
           </div>
         </div>
 
@@ -301,6 +308,23 @@
           </div>
 
           <!-- Title Card Toggle -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="export-profile" class="block text-xs font-semibold text-gray-400 mb-1.5">Export Quality</label>
+              <select id="export-profile" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm">
+                <option value="fast">Fast — 720p, 30 fps</option>
+                <option value="quality" selected>High Quality — 1080p, 30 fps</option>
+              </select>
+            </div>
+            <div>
+              <label for="encoding-mode" class="block text-xs font-semibold text-gray-400 mb-1.5">Encoding</label>
+              <select id="encoding-mode" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm">
+                <option value="auto">Automatic (GPU if available)</option>
+                <option value="cpu">CPU</option>
+              </select>
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-400">Narration and prepared backgrounds are reused automatically. Preparing new gameplay can take longer on its first render.</p>
           <div class="p-3 bg-darkBg rounded-xl border border-darkBorder flex items-center justify-between">
             <div>
               <span class="text-xs font-bold block">Reddit Title Card Overlay</span>
@@ -401,6 +425,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=story-fetch-2"></script>
 </body>
 </html>

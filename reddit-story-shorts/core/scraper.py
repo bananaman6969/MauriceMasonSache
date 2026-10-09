@@ -1,4 +1,4 @@
-"""Reddit Story Scraper: Scrapes public Reddit JSON endpoints without credentials."""
+"""Reddit stories from public RSS feeds, plus text cleaning and manual URL import."""
 
 import os
 import re
@@ -150,15 +150,6 @@ def load_curated_viral_stories(subreddit: Optional[str] = None) -> List[Dict[str
                         parsed["source"] = "curated_viral"
                         stories.append(parsed)
 
-        # If specific subreddit had no entries, return all curated stories
-        if not stories and clean_sub:
-            for sub_key, sub_posts in data.items():
-                for p in sub_posts:
-                    parsed = parse_post_dict(p)
-                    if parsed:
-                        parsed["source"] = "curated_viral"
-                        stories.append(parsed)
-
         return stories
     except Exception as err:
         logger.error(f"Failed to load curated viral stories: {err}")
@@ -171,94 +162,32 @@ def fetch_subreddit_posts(
     timeframe: str = "day",
     limit: int = 25,
 ) -> List[Dict[str, Any]]:
-    """Fetch stories from a subreddit using the public Reddit JSON endpoint with automatic fallback to curated viral library.
-    
-    Args:
-        subreddit: Name of the subreddit (without r/).
-        sort: 'hot', 'top', or 'new'.
-        timeframe: 'day', 'week', 'month', or 'all' (for top sort).
-        limit: Number of items to fetch (max 100).
-        
-    Returns:
-        List of parsed post dictionaries.
-    """
-    clean_sub = subreddit.replace("r/", "").strip()
-    url = f"https://www.reddit.com/r/{clean_sub}/{sort}.json"
-    params = {"limit": min(limit, 100), "raw_json": 1}
-    if sort == "top":
-        params["t"] = timeframe
-
-    # Check for official Reddit OAuth API credentials
-    client_id = os.getenv("REDDIT_CLIENT_ID")
-    client_secret = os.getenv("REDDIT_CLIENT_SECRET")
-    if client_id and client_secret:
-        try:
-            auth = requests.auth.HTTPBasicAuth(client_id, client_secret)
-            token_resp = requests.post(
-                "https://www.reddit.com/api/v1/access_token",
-                data={"grant_type": "client_credentials"},
-                auth=auth,
-                headers={"User-Agent": "windows:storyshorts:v1.0 (by /u/StoryShortsBot)"},
-                timeout=10,
-            )
-            token_data = token_resp.json()
-            access_token = token_data.get("access_token")
-            if access_token:
-                oauth_headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "User-Agent": "windows:storyshorts:v1.0 (by /u/StoryShortsBot)",
-                }
-                oauth_url = f"https://oauth.reddit.com/r/{clean_sub}/{sort}"
-                res = requests.get(oauth_url, params=params, headers=oauth_headers, timeout=10)
-                if res.status_code == 200:
-                    data = res.json()
-                    children = data.get("data", {}).get("children", [])
-                    parsed_posts = [
-                        parse_post_dict(c.get("data", {}))
-                        for c in children
-                        if parse_post_dict(c.get("data", {}))
-                    ]
-                    if parsed_posts:
-                        return parsed_posts
-        except Exception as err:
-            logger.warning(f"Reddit OAuth query failed: {err}")
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-    }
-
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            children = data.get("data", {}).get("children", [])
-            parsed_posts: List[Dict[str, Any]] = []
-
-            for child in children:
-                item = child.get("data", {})
-                parsed = parse_post_dict(item)
-                if parsed and (parsed["body"] or clean_sub.lower() == "askreddit"):
-                    parsed["source"] = "live_reddit"
-                    parsed_posts.append(parsed)
-
-            if parsed_posts:
-                return parsed_posts
-    except Exception as err:
-        logger.warning(f"Live Reddit request to r/{clean_sub} encountered {err}.")
-
-    # Fallback to Curated Viral Stories Dataset
-    logger.info(f"Using curated viral stories dataset for r/{clean_sub} (bypassing Reddit anti-bot CAPTCHA)")
-    curated = load_curated_viral_stories(clean_sub)
-    if curated:
-        return curated[:limit]
-
-    return []
+    """Fetch fresh RSS stories or recent cached posts, without API credentials."""
+    from core.reddit_rss import get_listing
+    return get_listing(subreddit, sort, timeframe, limit)["posts"]
 
 
 def fetch_post_by_url(reddit_url: str) -> Dict[str, Any]:
     """Fetch a single Reddit post by URL with graceful fallback."""
-    clean_url = reddit_url.split("?")[0].rstrip("/") + ".json"
+    from urllib.parse import urlparse
+    from core.reddit_rss import fetch_feed
+    parsed_url = urlparse(reddit_url)
+    if parsed_url.scheme not in ("http", "https") or parsed_url.hostname not in (
+        "www.reddit.com", "reddit.com", "old.reddit.com"
+    ):
+        raise ValueError("Please enter a Reddit post URL")
+    match = re.match(r"/r/([A-Za-z0-9_]{2,21})/comments/([A-Za-z0-9]+)/", parsed_url.path + "/")
+    if not match:
+        raise ValueError("Please enter a full Reddit post URL containing /r/.../comments/...")
+    subreddit, post_id = match.groups()
+    rss_url = f"https://www.reddit.com/r/{subreddit}/comments/{post_id}/.rss"
+    try:
+        posts = fetch_feed(rss_url, {}, subreddit, post_id)
+        if posts:
+            return posts[0]
+    except Exception as err:
+        logger.warning("Direct Reddit RSS fetch failed: %s", err)
+    clean_url = "https://www.reddit.com" + parsed_url.path.rstrip("/") + ".json"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
@@ -312,8 +241,8 @@ def fetch_post_by_url(reddit_url: str) -> Dict[str, Any]:
             "full_text": extracted_title,
             "author": "StoryTeller",
             "subreddit": extracted_sub,
-            "score": 14200,
-            "num_comments": 850,
+            "score": None,
+            "num_comments": None,
             "permalink": reddit_url,
             "url": reddit_url,
             "over_18": False,

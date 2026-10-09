@@ -36,6 +36,10 @@ htmlcov/
 # OS and environment
 .env
 .venv/
+.venv-app/
+.venv313/
+reddit-story-shorts/cache/
+reddit-story-shorts/assets/gameplay/.downloads/
 venv/
 *.log
 .DS_Store

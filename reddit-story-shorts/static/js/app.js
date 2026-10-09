@@ -6,13 +6,66 @@ let currentSelectedPost = null;
 let activeEventSource = null;
 let activeJobId = null;
 let currentPosts = [];
+let redditRetryTimer = null;
+
+function escapeStoryText(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[char]));
+}
 
 document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("fetch-posts-btn").addEventListener("click", fetchPosts);
     loadGameplayList();
     loadMusicList();
     loadGallery();
-    fetchPosts(); // Load initial batch
+    loadNarratorVoices();
+    loadSubreddits().then(fetchPosts); // Populate the selector before fetching stories
 });
+
+async function loadSubreddits() {
+    const select = document.getElementById("sub-select");
+    try {
+        const response = await fetch("/api/subreddits");
+        if (!response.ok) throw new Error("Subreddit list unavailable");
+        const data = await response.json();
+        const names = (data.subreddits || []).filter(name =>
+            typeof name === "string" && /^[A-Za-z0-9_]{2,21}$/.test(name));
+        if (!names.length) throw new Error("Empty subreddit list");
+        const selected = select.value;
+        const options = names.map(name => {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = `r/${name}`;
+            return option;
+        });
+        select.replaceChildren(...options);
+        select.value = names.includes(selected) ? selected : names[0];
+    } catch (error) {
+        console.warn("Using the built-in subreddit selection", error);
+    }
+}
+
+async function loadNarratorVoices() {
+    try {
+        const response = await fetch("/api/voices");
+        if (!response.ok) return;
+        const data = await response.json();
+        const select = document.getElementById("voice-select");
+        const selected = select.value;
+        const existing = new Set([...select.options].map(option => option.value));
+        for (const voice of data.voices || []) {
+            if (existing.has(voice.id)) continue;
+            const option = document.createElement("option");
+            option.value = voice.id;
+            option.textContent = `${voice.name} — ${voice.locale}`;
+            select.appendChild(option);
+        }
+        select.value = selected;
+    } catch (error) {
+        console.warn("Using the built-in voice selection", error);
+    }
+}
 
 function switchSourcingTab(tab) {
     const browseTab = document.getElementById("tab-browse");
@@ -34,22 +87,41 @@ function switchSourcingTab(tab) {
 }
 
 async function fetchPosts() {
+    const btn = document.getElementById("fetch-posts-btn");
+    if (btn.disabled) return;
+    if (redditRetryTimer) clearTimeout(redditRetryTimer);
+    redditRetryTimer = null;
     const sub = document.getElementById("sub-select").value;
     const sort = document.getElementById("sort-select").value;
     const limit = document.getElementById("limit-select").value;
     const container = document.getElementById("posts-container");
-    const btn = document.getElementById("fetch-posts-btn");
+    const sourceStatus = document.getElementById("reddit-source-status");
+    sourceStatus.textContent = "Fetching fresh Reddit posts…";
+    currentPosts = [];
 
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>Loading...</span>`;
     container.innerHTML = `<div class="col-span-full py-12 text-center text-gray-400 text-sm"><i class="fa-solid fa-spinner animate-spin text-reddit text-2xl mb-2 block"></i>Fetching stories from r/${sub}...</div>`;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-        const res = await fetch(`/api/reddit/posts?subreddit=${encodeURIComponent(sub)}&sort=${sort}&limit=${limit}`);
+        const res = await fetch(`/api/reddit/posts?subreddit=${encodeURIComponent(sub)}&sort=${encodeURIComponent(sort)}&limit=${encodeURIComponent(limit)}`, {
+            signal: controller.signal,
+        });
         const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || "Unable to fetch stories");
+        const sourceLabel = data.source === "reddit_rss" ? "Live Reddit RSS" :
+            data.source === "cached_rss" ? (data.stale ? "Cached Reddit posts (refresh failed)" : "Cached Reddit posts") : "Reddit unavailable";
+        sourceStatus.textContent = data.message || `${sourceLabel}${data.fetched_at ? ` · Last fetched ${new Date(data.fetched_at * 1000).toLocaleString()}` : ""}. Refreshes automatically on load; cached for five minutes.`;
+        if (data.retry_at && (data.stale || data.source === "unavailable")) {
+            const retryDate = new Date(data.retry_at * 1000);
+            sourceStatus.textContent += ` Automatic retry at ${retryDate.toLocaleTimeString()}.`;
+            redditRetryTimer = setTimeout(() => fetchPosts(), Math.max(1000, retryDate.getTime() - Date.now() + 2000));
+        }
 
         if (!data.success || !data.posts || data.posts.length === 0) {
-            container.innerHTML = `<div class="col-span-full py-8 text-center text-gray-500">No stories found in r/${sub}. Try another subreddit or sort.</div>`;
+            container.innerHTML = `<div class="col-span-full py-8 text-center text-gray-500">No stories available in r/${escapeStoryText(sub)}. Try another subreddit or sort, or paste a story into the editor.</div>`;
             return;
         }
 
@@ -62,17 +134,17 @@ async function fetchPosts() {
                 <div class="space-y-2">
                     <div class="flex items-center justify-between text-[11px] text-gray-400">
                         <div class="flex items-center space-x-2">
-                            <span class="font-bold text-reddit">${post.subreddit}</span>
-                            ${post.source === "curated_viral" ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🔥 Viral Classic</span>' : '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">⚡ Live</span>'}
+                            <span class="font-bold text-reddit">${escapeStoryText(post.subreddit)}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400">${post.source === "cached_rss" ? "Cached RSS" : post.source === "curated_viral" ? "Curated" : "Live RSS"}</span>
                         </div>
-                        <span>u/${post.author}</span>
+                        <span>u/${escapeStoryText(post.author)}</span>
                     </div>
-                    <h4 class="text-sm font-bold text-gray-100 line-clamp-2">${post.title}</h4>
-                    <p class="text-xs text-gray-400 line-clamp-3">${post.body || "(Empty body text)"}</p>
+                    <h4 class="text-sm font-bold text-gray-100 line-clamp-2">${escapeStoryText(post.title)}</h4>
+                    <p class="text-xs text-gray-400 line-clamp-3">${escapeStoryText(post.body || "Question only — add a story or comment in the editor.")}</p>
                 </div>
                 <div class="pt-2 border-t border-darkBorder/50 flex items-center justify-between text-xs">
                     <div class="flex items-center space-x-2 text-gray-400">
-                        <span>▲ ${(post.score >= 1000 ? (post.score/1000).toFixed(1)+'k' : post.score)}</span>
+                        <span>${post.score == null ? "Score unavailable" : `▲ ${post.score >= 1000 ? (post.score/1000).toFixed(1)+'k' : post.score}`}</span>
                         <span>⏱ ~${post.est_duration_seconds}s</span>
                     </div>
                     <button class="px-3 py-1 bg-reddit/20 hover:bg-reddit text-reddit hover:text-white font-bold rounded-lg transition" onclick="selectStoryByIndex(${index})">
@@ -83,8 +155,11 @@ async function fetchPosts() {
             container.appendChild(card);
         });
     } catch (err) {
-        container.innerHTML = `<div class="col-span-full py-8 text-center text-red-400">Failed to fetch stories: ${err.message}</div>`;
+        sourceStatus.textContent = "Reddit fetch failed.";
+        const message = err.name === "AbortError" ? "The request timed out. Please try again." : err.message;
+        container.innerHTML = `<div class="col-span-full py-8 text-center text-red-400">Failed to fetch stories: ${escapeStoryText(message)}</div>`;
     } finally {
+        clearTimeout(timeout);
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-magnifying-glass"></i><span>Fetch Stories</span>`;
     }
@@ -216,7 +291,7 @@ async function previewParts() {
                                 <span>Part ${p.part} / ${p.total_parts}</span>
                                 <span class="text-neonYellow">⏱ ~${p.est_duration_seconds}s</span>
                             </div>
-                            <p class="text-gray-400 text-[11px] line-clamp-3">${p.script}</p>
+                            <p class="text-gray-400 text-[11px] line-clamp-3">${escapeStoryText(p.script)}</p>
                         </div>
                     `).join("")}
                 </div>
@@ -232,7 +307,7 @@ async function previewVoice() {
     const rate = document.getElementById("voice-rate-select").value;
     const title = document.getElementById("editor-title").value;
     const body = document.getElementById("editor-body").value;
-    const sampleText = `${title}. ${body}`.slice(0, 150) || "Testing this voice narration for Reddit stories.";
+    const sampleText = `${title}. ${body}`.slice(0, 500) || "Testing this voice narration for Reddit stories.";
     const btn = document.getElementById("preview-voice-btn");
     const audio = document.getElementById("voice-preview-audio");
 
@@ -271,19 +346,21 @@ async function loadGameplayList() {
         const res = await fetch("/api/gameplay/list");
         const data = await res.json();
         const select = document.getElementById("gameplay-select");
+        const selectedFilename = select.value;
         select.innerHTML = "";
 
         if (data.videos && data.videos.length > 0) {
             data.videos.forEach(v => {
                 const opt = document.createElement("option");
                 opt.value = v.filename;
-                opt.innerText = `${v.filename} (${Math.round(v.duration)}s, ${v.width}x${v.height})`;
+                opt.innerText = `${v.display_name || v.filename} (${Math.round(v.duration)}s, ${v.width}x${v.height})`;
                 select.appendChild(opt);
             });
+            if (data.videos.some(v => v.filename === selectedFilename)) select.value = selectedFilename;
         } else {
             const opt = document.createElement("option");
             opt.value = "";
-            opt.innerText = "Default Procedural Gameplay (1080x1920)";
+            opt.innerText = "Default Looping Background";
             select.appendChild(opt);
         }
     } catch (err) {
@@ -340,8 +417,8 @@ async function startRender() {
         body,
         subreddit: currentSelectedPost ? currentSelectedPost.subreddit : "r/AmItheAsshole",
         author: currentSelectedPost ? currentSelectedPost.author : "StoryTeller",
-        score: currentSelectedPost ? currentSelectedPost.score : 18500,
-        num_comments: currentSelectedPost ? currentSelectedPost.num_comments : 1240,
+        score: currentSelectedPost ? currentSelectedPost.score : null,
+        num_comments: currentSelectedPost ? currentSelectedPost.num_comments : null,
         voice: document.getElementById("voice-select").value,
         voice_rate: document.getElementById("voice-rate-select").value,
         gameplay_filename: document.getElementById("gameplay-select").value || null,
@@ -352,6 +429,8 @@ async function startRender() {
         show_title_card: document.getElementById("title-card-toggle").checked,
         split_parts: document.getElementById("split-parts-toggle").checked,
         max_part_duration: parseInt(document.getElementById("max-duration-select").value),
+        export_profile: document.getElementById("export-profile").value,
+        encoding: document.getElementById("encoding-mode").value,
     };
 
     try {
@@ -388,7 +467,8 @@ async function startRender() {
             if (status.status === "completed") {
                 activeEventSource.close();
                 titleEl.innerText = "🎉 Video Generation Complete!";
-                descEl.innerText = "All parts rendered into 9:16 vertical MP4 format.";
+                const timings = status.timings || {};
+                descEl.innerText = `Completed in ${timings.total_seconds || 0}s — background ${timings.background_seconds || 0}s, narration ${timings.speech_seconds || 0}s, rendering ${timings.render_seconds || 0}s.`;
                 renderBtn.disabled = false;
                 renderBtn.classList.remove("opacity-50", "cursor-not-allowed");
                 if (cancelBtn) cancelBtn.classList.add("hidden");

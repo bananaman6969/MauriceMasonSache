@@ -23,6 +23,7 @@ from core.gameplay import (
 from core.audio_mixer import list_available_music_tracks, get_music_dir
 from core.story_splitter import split_story_into_parts
 from core.composer import render_short_video
+from core.performance import prepare_gameplay
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger("cli")
@@ -58,13 +59,7 @@ async def render_from_post(post: dict, args):
     gameplay_path = None
     if available:
         gameplay_path = available[0]["path"]
-    else:
-        logger.info("No local gameplay video found in assets/gameplay/. Creating default clip...")
-        fallback_path = os.path.join(gameplay_dir, "default_gameplay.mp4")
-        if not os.path.exists(fallback_path):
-            from tests.test_composer import create_mock_gameplay_clip
-            create_mock_gameplay_clip(fallback_path, duration=300)
-        gameplay_path = fallback_path
+    gameplay_path = prepare_gameplay(gameplay_path, args.export_profile, encoding=args.encoding)
 
     # 3. Locate BGM
     bgm_path = None
@@ -128,6 +123,9 @@ async def render_from_post(post: dict, args):
             title_card_path=card_path if not args.no_card else None,
             bgm_path=bgm_path,
             progress_callback=lambda pct: print(f"Progress: {pct:.1f}%\r", end=""),
+            export_profile=args.export_profile,
+            encoding=args.encoding,
+            prepared_gameplay=True,
         )
         print()
         logger.info(f"[SUCCESS] Part {part_num} rendered successfully: {out_file}")
@@ -155,6 +153,8 @@ def main():
     render_p.add_argument("--max-duration", type=int, default=60, help="Max duration in seconds per part")
     render_p.add_argument("--bgm", action="store_true", help="Include background music")
     render_p.add_argument("--no-card", action="store_true", help="Disable Reddit title card overlay")
+    render_p.add_argument("--export-profile", choices=["fast", "quality"], default="quality")
+    render_p.add_argument("--encoding", choices=["auto", "cpu"], default="auto")
 
     # Command: gameplay
     subparsers.add_parser("gameplay", help="List available gameplay clips and presets")

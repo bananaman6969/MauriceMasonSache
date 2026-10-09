@@ -12,6 +12,12 @@ def test_index_page():
     assert response.status_code == 200
     assert "Reddit Story" in response.text
     assert "Script Editor" in response.text
+    from core.scraper import DEFAULT_SUBREDDITS
+    import re
+    selector = re.search(r'<select id="sub-select".*?</select>', response.text, re.S).group()
+    options = re.findall(r'<option value="([^"]+)">([^<]+)</option>', selector)
+    assert options == [(name, f"r/{name}") for name in DEFAULT_SUBREDDITS]
+    assert "{{" not in selector
 
 
 def test_get_subreddits():
@@ -58,11 +64,17 @@ def test_list_videos_api():
     assert "videos" in data
 
 
-def test_reddit_posts_have_body():
+def test_reddit_posts_have_body(monkeypatch):
+    import app as server
+    monkeypatch.setattr(server, "get_listing", lambda *args: {
+        "posts": [{"title": "Fresh story", "body": "A complete live story."}],
+        "source": "reddit_rss", "fetched_at": 12345, "stale": False,
+    })
     response = client.get("/api/reddit/posts?subreddit=AmItheAsshole&limit=5")
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
+    assert data["source"] == "reddit_rss"
     assert len(data["posts"]) > 0
     # Every post must have a non-empty body
     for p in data["posts"]:
@@ -79,4 +91,18 @@ def test_cancel_render_job_endpoint():
     data = response.json()
     assert data["success"] is True
     assert "stopped" in data["message"].lower()
+
+
+def test_voice_preview_is_served_from_returned_url(tmp_path, monkeypatch):
+    import app as server
+    monkeypatch.setattr(server, "TEMP_DIR", str(tmp_path))
+    async def fake_speech(**kwargs):
+        from pathlib import Path
+        Path(kwargs["output_path"]).write_bytes(b"preview audio")
+    monkeypatch.setattr(server, "generate_speech_with_timings", fake_speech)
+    response = client.post("/api/tts/preview", json={"text": "Listen to this voice."})
+    assert response.status_code == 200
+    audio = client.get(response.json()["preview_url"])
+    assert audio.status_code == 200 and audio.content == b"preview audio"
+    assert client.get("/api/tts/preview/file/not_a_preview.mp3").status_code == 404
 

@@ -6,6 +6,9 @@ import json
 import asyncio
 import logging
 import shutil
+import time
+import threading
+from typing import Literal
 from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, Request, BackgroundTasks, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -35,6 +38,8 @@ from core.gameplay import (
 from core.audio_mixer import list_available_music_tracks, get_music_dir
 from core.story_splitter import split_story_into_parts
 from core.composer import render_short_video
+from core.performance import prepare_gameplay, detect_encoder
+from core.reddit_rss import get_listing
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("reddit_story_shorts")
@@ -64,6 +69,7 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 render_jobs: Dict[str, Dict[str, Any]] = {}
 active_render_processes: Dict[str, Any] = {}
 cancelled_jobs: set[str] = set()
+render_slot = threading.BoundedSemaphore(1)
 
 
 class PostByUrlRequest(BaseModel):
@@ -88,8 +94,8 @@ class RenderJobRequest(BaseModel):
     body: str
     subreddit: str = "r/AmItheAsshole"
     author: str = "RedditUser"
-    score: int = 15000
-    num_comments: int = 1200
+    score: Optional[int] = None
+    num_comments: Optional[int] = None
     voice: str = "en-US-ChristopherNeural"
     voice_rate: str = "+0%"
     gameplay_filename: Optional[str] = None
@@ -100,6 +106,8 @@ class RenderJobRequest(BaseModel):
     show_title_card: bool = True
     split_parts: bool = False
     max_part_duration: int = 60
+    export_profile: Literal["fast", "quality"] = "quality"
+    encoding: Literal["auto", "cpu"] = "auto"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -128,8 +136,10 @@ async def get_subreddit_posts(
     limit: int = 25,
 ):
     try:
-        posts = fetch_subreddit_posts(subreddit, sort=sort, timeframe=timeframe, limit=limit)
-        return {"success": True, "posts": posts}
+        listing = await asyncio.to_thread(get_listing, subreddit, sort, timeframe, limit)
+        return {"success": True, **listing}
+    except ValueError as err:
+        return JSONResponse(status_code=400, content={"success": False, "error": str(err)})
     except Exception as err:
         logger.error(f"Error fetching subreddit posts: {err}")
         return JSONResponse(status_code=500, content={"success": False, "error": str(err)})
@@ -138,7 +148,7 @@ async def get_subreddit_posts(
 @app.post("/api/reddit/post-by-url")
 async def get_post_by_url(req: PostByUrlRequest):
     try:
-        post = fetch_post_by_url(req.url)
+        post = await asyncio.to_thread(fetch_post_by_url, req.url)
         return {"success": True, "post": post}
     except Exception as err:
         logger.error(f"Error fetching post by URL: {err}")
@@ -154,7 +164,7 @@ async def list_voices():
 @app.post("/api/tts/preview")
 async def preview_tts(req: TTSPreviewRequest):
     try:
-        snippet = req.text[:150]
+        snippet = req.text[:500]
         preview_filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
         preview_path = os.path.join(TEMP_DIR, preview_filename)
 
@@ -164,14 +174,25 @@ async def preview_tts(req: TTSPreviewRequest):
             voice=req.voice,
             rate=req.rate,
         )
-        return {"success": True, "preview_url": f"/static/temp/{preview_filename}"}
+        return {"success": True, "preview_url": f"/api/tts/preview/file/{preview_filename}"}
     except Exception as err:
         return JSONResponse(status_code=500, content={"success": False, "error": str(err)})
 
 
+@app.get("/api/tts/preview/file/{filename}")
+async def serve_voice_preview(filename: str):
+    import re
+    if not re.fullmatch(r"preview_[0-9a-f]{8}\.mp3", filename):
+        raise HTTPException(status_code=404, detail="Preview not found")
+    path = os.path.join(TEMP_DIR, filename)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Preview not found")
+    return FileResponse(path, media_type="audio/mpeg")
+
+
 @app.get("/api/gameplay/list")
 async def get_gameplay_list():
-    videos = list_available_gameplay_videos()
+    videos = await asyncio.to_thread(list_available_gameplay_videos)
     return {"videos": videos, "presets": GAMEPLAY_PRESETS}
 
 
@@ -213,9 +234,30 @@ async def split_story_endpoint(req: SplitStoryRequest):
     return {"parts": parts}
 
 
-async def _process_render_job(job_id: str, req: RenderJobRequest):
+def _process_render_job(job_id: str, req: RenderJobRequest):
+    """Starlette runs synchronous background tasks in its worker pool."""
+    job = render_jobs[job_id]
+    job["step"] = "Waiting for render worker..."
+    while not render_slot.acquire(timeout=0.1):
+        if job_id in cancelled_jobs:
+            return
+    try:
+        if job_id not in cancelled_jobs:
+            asyncio.run(_run_render_job(job_id, req))
+    finally:
+        render_slot.release()
+        active_render_processes.pop(job_id, None)
+
+
+async def _run_render_job(job_id: str, req: RenderJobRequest):
     """Background rendering worker."""
     job = render_jobs[job_id]
+    started = time.perf_counter()
+    job["timings"] = {"speech_seconds": 0.0, "render_seconds": 0.0}
+    def is_cancelled_check():
+        return job_id in cancelled_jobs or job.get("status") == "cancelled"
+    def register_proc(proc):
+        active_render_processes[job_id] = proc
     try:
         # Determine story parts
         if req.split_parts:
@@ -250,13 +292,13 @@ async def _process_render_job(job_id: str, req: RenderJobRequest):
         if not gameplay_path and available_gameplay:
             gameplay_path = available_gameplay[0]["path"]
 
-        # If still no gameplay, create a fallback animated background
-        if not gameplay_path:
-            fallback_path = os.path.join(gameplay_dir, "default_gameplay.mp4")
-            if not os.path.exists(fallback_path):
-                from tests.test_composer import create_mock_gameplay_clip
-                create_mock_gameplay_clip(fallback_path, duration=300)
-            gameplay_path = fallback_path
+        job["step"] = "Preparing reusable background (first use may take longer)..."
+        preparation_started = time.perf_counter()
+        gameplay_path = prepare_gameplay(gameplay_path, req.export_profile,
+            is_cancelled_check, register_proc, req.encoding)
+        job["timings"]["background_seconds"] = round(time.perf_counter() - preparation_started, 2)
+        job["encoder"] = detect_encoder() if req.encoding == "auto" else "libx264"
+        job["export_profile"] = req.export_profile
 
         # Find BGM if requested
         bgm_path = None
@@ -287,12 +329,24 @@ async def _process_render_job(job_id: str, req: RenderJobRequest):
             part_card_path = os.path.join(TEMP_DIR, f"{part_id}_card.png") if req.show_title_card else None
 
             # 1. Generate Voiceover & Timings
-            tts_res = await generate_speech_with_timings(
+            speech_started = time.perf_counter()
+            speech_task = asyncio.create_task(generate_speech_with_timings(
                 text=script,
                 output_path=part_voice_path,
                 voice=req.voice,
                 rate=req.voice_rate,
-            )
+            ))
+            while not speech_task.done():
+                if is_cancelled_check():
+                    speech_task.cancel()
+                    try:
+                        await speech_task
+                    except asyncio.CancelledError:
+                        pass
+                    raise RuntimeError("Render cancelled by user.")
+                await asyncio.sleep(0.1)
+            tts_res = await speech_task
+            job["timings"]["speech_seconds"] += round(time.perf_counter() - speech_started, 2)
 
             if job_id in cancelled_jobs or job.get("status") == "cancelled":
                 job["status"] = "cancelled"
@@ -328,12 +382,7 @@ async def _process_render_job(job_id: str, req: RenderJobRequest):
                 job["progress"] = min(round(base + (pct / 100.0) * slice_span, 1), 99.0)
                 job["step"] = f"Part {part_num}/{total_parts}: Rendering video ({pct:.0f}%)..."
 
-            def is_cancelled_check() -> bool:
-                return job_id in cancelled_jobs or job.get("status") == "cancelled"
-
-            def register_proc(proc):
-                active_render_processes[job_id] = proc
-
+            render_started = time.perf_counter()
             try:
                 render_short_video(
                     gameplay_path=gameplay_path,
@@ -351,9 +400,13 @@ async def _process_render_job(job_id: str, req: RenderJobRequest):
                     progress_callback=progress_cb,
                     is_cancelled=is_cancelled_check,
                     process_callback=register_proc,
+                    export_profile=req.export_profile,
+                    encoding=req.encoding,
+                    prepared_gameplay=True,
                 )
             finally:
                 active_render_processes.pop(job_id, None)
+            job["timings"]["render_seconds"] += round(time.perf_counter() - render_started, 2)
 
             if job_id in cancelled_jobs or job.get("status") == "cancelled":
                 job["status"] = "cancelled"
@@ -370,8 +423,9 @@ async def _process_render_job(job_id: str, req: RenderJobRequest):
 
         job["progress"] = 100.0
         job["step"] = "Completed successfully!"
-        job["status"] = "completed"
         job["videos"] = rendered_videos
+        job["timings"]["total_seconds"] = round(time.perf_counter() - started, 2)
+        job["status"] = "completed"
 
     except Exception as err:
         if job_id in cancelled_jobs or "cancelled" in str(err).lower():
@@ -384,6 +438,9 @@ async def _process_render_job(job_id: str, req: RenderJobRequest):
         job["status"] = "failed"
         job["error"] = str(err)
         job["step"] = f"Failed: {err}"
+    finally:
+        job["timings"]["total_seconds"] = round(time.perf_counter() - started, 2)
+        logger.info("Job %s timings: %s", job_id, job["timings"])
 
 
 @app.post("/api/render")
@@ -441,6 +498,8 @@ async def stream_render_progress(job_id: str):
                 "status": job.get("status", "processing"),
                 "videos": job.get("videos", []),
                 "error": job.get("error"),
+                "timings": job.get("timings", {}),
+                "encoder": job.get("encoder"),
             }
             yield {"event": "update", "data": json.dumps(data)}
 

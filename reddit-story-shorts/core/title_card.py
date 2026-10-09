@@ -52,8 +52,10 @@ def wrap_text(text: str, font: ImageFont.ImageFont, max_width: int, draw: ImageD
     return lines
 
 
-def format_score(score: int) -> str:
+def format_score(score: Optional[int]) -> str:
     """Format score to human readable string e.g. 14.5k."""
+    if score is None:
+        return "—"
     if score >= 1_000_000:
         return f"{score / 1_000_000:.1f}M"
     if score >= 1_000:

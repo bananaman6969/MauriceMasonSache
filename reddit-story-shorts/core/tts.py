@@ -3,11 +3,16 @@
 import os
 import asyncio
 import logging
+import hashlib
+import json
+import uuid
+from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional
 import edge_tts
 
 logger = logging.getLogger(__name__)
+TTS_CACHE_DIR = Path(__file__).resolve().parents[1] / "cache" / "tts"
 
 CURATED_VOICES = [
     {
@@ -101,6 +106,21 @@ async def generate_speech_with_timings(
         TTSResult containing output audio path, total duration, and word timings.
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    cache_dir = TTS_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(json.dumps([text, voice, rate, volume, pitch, "word-v1"]).encode()).hexdigest()
+    metadata_path = cache_dir / f"{key}.json"
+    try:
+        cached = json.loads(metadata_path.read_text(encoding="utf-8"))
+        audio_path = cache_dir / cached["audio_file"]
+        words = [WordTiming(**word) for word in cached["words"]]
+        audio = audio_path.read_bytes()
+        if audio and words and cached["duration"] > 0:
+            Path(output_path).write_bytes(audio)
+            logger.info("Reused cached narration")
+            return TTSResult(output_path, cached["duration"], words)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     communicate = edge_tts.Communicate(
         text=text,
         voice=voice,
@@ -133,6 +153,16 @@ async def generate_speech_with_timings(
         f.write(audio_bytes)
 
     total_duration = words[-1].end if words else 0.0
+
+    if audio_bytes and words and total_duration > 0:
+        # Publish metadata atomically after its uniquely named audio file is complete.
+        token = uuid.uuid4().hex
+        audio_name = f"{key}_{token}.mp3"
+        (cache_dir / audio_name).write_bytes(audio_bytes)
+        temp_metadata = cache_dir / f"{key}_{token}.json"
+        temp_metadata.write_text(json.dumps({"audio_file": audio_name,
+            "duration": total_duration, "words": [w.to_dict() for w in words]}), encoding="utf-8")
+        os.replace(temp_metadata, metadata_path)
 
     return TTSResult(
         audio_path=output_path,
