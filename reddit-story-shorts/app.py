@@ -368,7 +368,8 @@ async def _run_render_job(job_id: str, req: RenderJobRequest):
                 return
 
             # 2. Generate Karaoke Subtitles
-            words = caption_words(tts_res.words, script) if req.censor_words else tts_res.words
+            spoken_script = narration_text(script) if req.censor_words else script
+            words = caption_words(tts_res.words, script, spoken_script)
             generate_karaoke_ass(words, part_subtitles_path)
 
             # 3. Generate Title Card for Part 1 (or each part)

@@ -67,3 +67,30 @@ def test_narration_and_caption_alignment_preserves_timing_and_normal_words():
 def test_censoring_is_idempotent():
     text = censor_text("raped, murdered, asshole")
     assert censor_text(text) == text
+
+
+@pytest.mark.parametrize("word", list(REPLACEMENTS))
+def test_every_replacement_has_matching_spoken_and_display_words(word):
+    display, spoken = REPLACEMENTS[word]
+    assert censor_text(word.upper()) == display
+    assert narration_text(display) == spoken
+    timing = WordTiming(spoken, .3, .8)
+    restored = caption_words([timing], display)[0]
+    assert restored.word == display
+    assert (restored.start, restored.end) == (.3, .8)
+
+
+def test_alignment_with_contractions_punctuation_and_repeated_alternatives():
+    display = "Don't call him an a**hole. That jerk wasn't gr*ped!"
+    spoken = narration_text(display)
+    raw = [WordTiming(word.strip('.!'), i, i + .7) for i, word in enumerate(spoken.split())]
+    result = caption_words(raw, display)
+    assert result[4].word == "a**hole."
+    assert result[6].word == "jerk"
+    assert result[-1].word == "gr*ped!"
+    assert result[7].word == "wasn't"
+
+
+def test_expanded_list_avoids_substrings():
+    text = "grape scraped cocktail assignment analysis skill heroines"
+    assert censor_text(text) == text

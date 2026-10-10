@@ -10,28 +10,37 @@ logger = logging.getLogger(__name__)
 
 def format_ass_timestamp(seconds: float) -> str:
     """Format seconds into ASS timestamp format: H:MM:SS.cc"""
-    if seconds < 0:
-        seconds = 0
-    hrs = int(seconds // 3600)
-    mins = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    centis = int(round((seconds - int(seconds)) * 100))
-    if centis >= 100:
-        centis = 99
+    ticks = round(max(0, seconds) * 100)
+    total_seconds, centis = divmod(ticks, 100)
+    hrs, remainder = divmod(total_seconds, 3600)
+    mins, secs = divmod(remainder, 60)
     return f"{hrs}:{mins:02d}:{secs:02d}.{centis:02d}"
 
 
 def format_srt_timestamp(seconds: float) -> str:
     """Format seconds into SRT timestamp format: HH:MM:SS,mmm"""
-    if seconds < 0:
-        seconds = 0
-    hrs = int(seconds // 3600)
-    mins = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int(round((seconds - int(seconds)) * 1000))
-    if millis >= 1000:
-        millis = 999
+    ticks = round(max(0, seconds) * 1000)
+    total_seconds, millis = divmod(ticks, 1000)
+    hrs, remainder = divmod(total_seconds, 3600)
+    mins, secs = divmod(remainder, 60)
     return f"{hrs:02d}:{mins:02d}:{secs:02d},{millis:03d}"
+
+
+def group_speech_words(words, words_per_group=3, pause_seconds=0.35):
+    """Keep caption groups within spoken phrases rather than across pauses."""
+    if words_per_group < 1:
+        raise ValueError("words_per_group must be positive")
+    groups, current = [], []
+    for word in words:
+        if current and (len(current) >= words_per_group
+                        or current[-1].word.rstrip().endswith((".", "!", "?", ";"))
+                        or word.start - current[-1].end >= pause_seconds):
+            groups.append(current)
+            current = []
+        current.append(word)
+    if current:
+        groups.append(current)
+    return groups
 
 
 def generate_karaoke_ass(
@@ -63,10 +72,7 @@ def generate_karaoke_ass(
             f.write("")
         return output_path
 
-    # Chunk words into groups of `words_per_group`
-    chunks: List[List[WordTiming]] = []
-    for i in range(0, len(words), words_per_group):
-        chunks.append(words[i : i + words_per_group])
+    chunks = group_speech_words(words, words_per_group)
 
     lines: List[str] = [
         "[Script Info]",
@@ -88,18 +94,12 @@ def generate_karaoke_ass(
     ]
 
     for chunk in chunks:
-        # Group time boundaries
-        chunk_start = chunk[0].start
-        chunk_end = chunk[-1].end
-
         # Within this chunk, create a dialogue event for each active word
         for active_idx, active_word in enumerate(chunk):
             w_start = format_ass_timestamp(active_word.start)
-            # Active word duration extends to next word's start or chunk end
-            if active_idx + 1 < len(chunk):
-                w_end = format_ass_timestamp(chunk[active_idx + 1].start)
-            else:
-                w_end = format_ass_timestamp(chunk_end)
+            next_word = chunk[active_idx + 1] if active_idx + 1 < len(chunk) else None
+            end = min(active_word.end, next_word.start) if next_word else active_word.end
+            w_end = format_ass_timestamp(end)
 
             # Build line text with current word highlighted
             formatted_words = []
@@ -111,7 +111,14 @@ def generate_karaoke_ass(
                     formatted_words.append(txt)
 
             line_text = " ".join(formatted_words)
-            lines.append(f"Dialogue: 0,{w_start},{w_end},Default,,0,0,0,,{line_text}")
+            if end > active_word.start and w_end != w_start:
+                lines.append(f"Dialogue: 0,{w_start},{w_end},Default,,0,0,0,,{line_text}")
+            # Hold the phrase during small gaps, with no falsely active word.
+            if next_word and next_word.start > end:
+                neutral = " ".join(w.word.upper() if uppercase else w.word for w in chunk)
+                neutral_start, neutral_end = format_ass_timestamp(end), format_ass_timestamp(next_word.start)
+                if neutral_start != neutral_end:
+                    lines.append(f"Dialogue: 0,{neutral_start},{neutral_end},Default,,0,0,0,,{neutral}")
 
     content = "\n".join(lines) + "\n"
     with open(output_path, "w", encoding="utf-8") as f:
@@ -135,8 +142,7 @@ def generate_srt_subtitles(
     srt_entries: List[str] = []
     entry_num = 1
 
-    for i in range(0, len(words), words_per_group):
-        chunk = words[i : i + words_per_group]
+    for chunk in group_speech_words(words, words_per_group):
         start_ts = format_srt_timestamp(chunk[0].start)
         end_ts = format_srt_timestamp(chunk[-1].end)
         text = " ".join(w.word for w in chunk)

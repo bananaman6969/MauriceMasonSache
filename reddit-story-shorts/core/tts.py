@@ -6,6 +6,7 @@ import logging
 import hashlib
 import json
 import uuid
+from html import unescape
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional
@@ -108,7 +109,7 @@ async def generate_speech_with_timings(
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     cache_dir = TTS_CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(json.dumps([text, voice, rate, volume, pitch, "word-v1"]).encode()).hexdigest()
+    key = hashlib.sha256(json.dumps([text, voice, rate, volume, pitch, "word-v2"]).encode()).hexdigest()
     metadata_path = cache_dir / f"{key}.json"
     try:
         cached = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -142,7 +143,7 @@ async def generate_speech_with_timings(
             # 1 tick = 100 ns = 0.0001 ms = 0.0000001 s (10,000,000 ticks = 1 second)
             offset_ticks = chunk.get("offset", 0)
             duration_ticks = chunk.get("duration", 0)
-            word_text = chunk.get("text", "").strip()
+            word_text = unescape(chunk.get("text", "")).strip()
 
             if word_text:
                 start_sec = offset_ticks / 10_000_000.0

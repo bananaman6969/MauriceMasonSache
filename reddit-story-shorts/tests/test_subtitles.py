@@ -9,6 +9,7 @@ from core.subtitles import (
     format_srt_timestamp,
     generate_karaoke_ass,
     generate_srt_subtitles,
+    group_speech_words,
 )
 
 
@@ -20,6 +21,8 @@ def test_timestamp_formatting():
     # Edge cases
     assert format_ass_timestamp(0.0) == "0:00:00.00"
     assert format_srt_timestamp(0.0) == "00:00:00,000"
+    assert format_ass_timestamp(59.999) == "0:01:00.00"
+    assert format_srt_timestamp(59.9999) == "00:01:00,000"
 
 
 def test_generate_karaoke_ass():
@@ -79,3 +82,27 @@ def test_generate_srt_subtitles():
     finally:
         if os.path.exists(out_path):
             os.remove(out_path)
+
+
+def test_phrase_groups_follow_sentence_ends_and_long_pauses():
+    words = [WordTiming("Hello.", 0, .3), WordTiming("He", .5, .7),
+             WordTiming("left", 1.2, 1.5), WordTiming("today.", 1.55, 1.9)]
+    groups = group_speech_words(words)
+    assert [[w.word for w in group] for group in groups] == [["Hello."], ["He"], ["left", "today."]]
+
+
+def test_highlights_end_with_speech_and_do_not_span_pauses(tmp_path):
+    words = [WordTiming("He", 0, .2), WordTiming("was", .3, .5),
+             WordTiming("gr*ped.", 1.2, 1.6)]
+    path = tmp_path / "speech.ass"
+    generate_karaoke_ass(words, str(path))
+    events = [line for line in path.read_text().splitlines() if line.startswith("Dialogue:")]
+    highlighted = [line for line in events if r"{\c&H0000E6FF&}" in line]
+    assert [line.split(',')[1:3] for line in highlighted] == [
+        ["0:00:00.00", "0:00:00.20"], ["0:00:00.30", "0:00:00.50"], ["0:00:01.20", "0:00:01.60"]]
+    assert "GR*PED." not in highlighted[0]
+    assert any(",0:00:00.20,0:00:00.30," in line and r"{\c" not in line for line in events)
+    srt = tmp_path / "speech.srt"
+    generate_srt_subtitles(words, str(srt))
+    assert "00:00:00,000 --> 00:00:00,500" in srt.read_text()
+    assert "00:00:01,200 --> 00:00:01,600" in srt.read_text()
