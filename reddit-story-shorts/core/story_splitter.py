@@ -53,9 +53,12 @@ def split_story_into_parts(
     sentences = split_text_into_sentences(body)
     parts_data: List[Dict[str, Any]] = []
 
-    # First part includes the title
+    # Every part repeats the full title and part number. Reserve their words,
+    # plus the follow-up prompt, before assigning story sentences.
+    intro_words = len(title.split()) + 2
+    reserved_words = intro_words + (7 if add_cta else 0)
     current_sentences: List[str] = []
-    current_word_count = len(title.split())
+    current_word_count = reserved_words
 
     for sentence in sentences:
         s_words = len(sentence.split())
@@ -64,7 +67,7 @@ def split_story_into_parts(
             part_body = " ".join(current_sentences)
             parts_data.append({"body": part_body})
             current_sentences = [sentence]
-            current_word_count = s_words
+            current_word_count = reserved_words + s_words
         else:
             current_sentences.append(sentence)
             current_word_count += s_words
@@ -76,14 +79,10 @@ def split_story_into_parts(
     final_parts: List[Dict[str, Any]] = []
 
     for idx, p in enumerate(parts_data, start=1):
-        if idx == 1:
-            part_title = f"{title} (Part 1)"
-            cta = " Like and follow for part 2!" if (add_cta and total_parts > 1) else ""
-            script = f"{title}. {p['body']}{cta}"
-        else:
-            part_title = f"{title} (Part {idx})"
-            cta = f" Like and follow for part {idx + 1}!" if (add_cta and idx < total_parts) else ""
-            script = f"Part {idx}. {p['body']}{cta}"
+        part_title = f"{title} (Part {idx})"
+        cta = f" Like and follow for part {idx + 1}!" if (add_cta and idx < total_parts) else ""
+        title_ending = "" if title.rstrip().endswith((".", "!", "?")) else "."
+        script = f"{title}{title_ending} Part {idx}. {p['body']}{cta}"
 
         words = len(script.split())
         final_parts.append({

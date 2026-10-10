@@ -1,0 +1,12 @@
+{
+  "watch_directories": ["../reddit-story-shorts/output"],
+  "database": "data/uploads.sqlite3",
+  "poll_seconds": 15,
+  "profiles": {
+    "stories": {
+      "user": "YOUR_UPLOAD_POST_PROFILE",
+      "privacy_level": "SELF_ONLY",
+      "min_interval_seconds": 3600
+    }
+  }
+}

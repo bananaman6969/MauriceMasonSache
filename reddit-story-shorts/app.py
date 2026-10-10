@@ -40,6 +40,8 @@ from core.story_splitter import split_story_into_parts
 from core.composer import render_short_video
 from core.performance import prepare_gameplay, detect_encoder
 from core.reddit_rss import get_listing
+from core.censor import censor_text, prepare_story, narration_text, caption_words
+from core.upload_handoff import handoff_video
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("reddit_story_shorts")
@@ -80,6 +82,7 @@ class TTSPreviewRequest(BaseModel):
     text: str
     voice: str = "en-US-ChristopherNeural"
     rate: str = "+0%"
+    censor_words: bool = False
 
 
 class SplitStoryRequest(BaseModel):
@@ -87,6 +90,7 @@ class SplitStoryRequest(BaseModel):
     body: str
     max_duration_seconds: int = 60
     add_cta: bool = True
+    censor_words: bool = False
 
 
 class RenderJobRequest(BaseModel):
@@ -108,6 +112,7 @@ class RenderJobRequest(BaseModel):
     max_part_duration: int = 60
     export_profile: Literal["fast", "quality"] = "quality"
     encoding: Literal["auto", "cpu"] = "auto"
+    censor_words: bool = False
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -164,7 +169,7 @@ async def list_voices():
 @app.post("/api/tts/preview")
 async def preview_tts(req: TTSPreviewRequest):
     try:
-        snippet = req.text[:500]
+        snippet = (narration_text(censor_text(req.text)) if req.censor_words else req.text)[:500]
         preview_filename = f"preview_{uuid.uuid4().hex[:8]}.mp3"
         preview_path = os.path.join(TEMP_DIR, preview_filename)
 
@@ -225,13 +230,20 @@ async def get_music_list():
 
 @app.post("/api/split-story")
 async def split_story_endpoint(req: SplitStoryRequest):
+    title, body = prepare_story(req.title, req.body, req.censor_words)
     parts = split_story_into_parts(
-        title=req.title,
-        body=req.body,
+        title=title,
+        body=body,
         max_duration_seconds=req.max_duration_seconds,
         add_cta=req.add_cta,
     )
     return {"parts": parts}
+
+
+@app.post("/api/story/censor-preview")
+async def censor_preview(req: SplitStoryRequest):
+    title, body = prepare_story(req.title, req.body, req.censor_words)
+    return {"title": title, "body": body}
 
 
 def _process_render_job(job_id: str, req: RenderJobRequest):
@@ -251,6 +263,8 @@ def _process_render_job(job_id: str, req: RenderJobRequest):
 
 async def _run_render_job(job_id: str, req: RenderJobRequest):
     """Background rendering worker."""
+    title, body = prepare_story(req.title, req.body, req.censor_words)
+    req = req.model_copy(update={"title": title, "body": body})
     job = render_jobs[job_id]
     started = time.perf_counter()
     job["timings"] = {"speech_seconds": 0.0, "render_seconds": 0.0}
@@ -331,7 +345,7 @@ async def _run_render_job(job_id: str, req: RenderJobRequest):
             # 1. Generate Voiceover & Timings
             speech_started = time.perf_counter()
             speech_task = asyncio.create_task(generate_speech_with_timings(
-                text=script,
+                text=narration_text(script) if req.censor_words else script,
                 output_path=part_voice_path,
                 voice=req.voice,
                 rate=req.voice_rate,
@@ -354,7 +368,8 @@ async def _run_render_job(job_id: str, req: RenderJobRequest):
                 return
 
             # 2. Generate Karaoke Subtitles
-            generate_karaoke_ass(tts_res.words, part_subtitles_path)
+            words = caption_words(tts_res.words, script) if req.censor_words else tts_res.words
+            generate_karaoke_ass(words, part_subtitles_path)
 
             # 3. Generate Title Card for Part 1 (or each part)
             if req.show_title_card and part_card_path:
@@ -426,6 +441,11 @@ async def _run_render_job(job_id: str, req: RenderJobRequest):
         job["videos"] = rendered_videos
         job["timings"]["total_seconds"] = round(time.perf_counter() - started, 2)
         job["status"] = "completed"
+        for video in rendered_videos:
+            try:
+                handoff_video(OUTPUT_DIR, video["filename"], video["title"])
+            except OSError:
+                logger.exception("Could not queue completed video %s for upload", video["filename"])
 
     except Exception as err:
         if job_id in cancelled_jobs or "cancelled" in str(err).lower():

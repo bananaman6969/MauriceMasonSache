@@ -37,6 +37,10 @@ Open your browser at [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 ### Faster rendering
 
+The script editor includes optional **Creator-style word censoring**, enabled in the dashboard by default: raped → gr*ped, murdered → unalived, fucking → f*cking. Voiceover uses pronounceable alternatives (graped, unalived, effing); captions restore the masked spellings without changing word timings. Title cards, script previews and split previews use the display versions. The editable source stays unchanged. This English word list is not a content moderation system and does not guarantee TikTok distribution or Creator Rewards eligibility.
+
+The editor's creator widgets show opening-hook feedback, a duration target and a speed-adjusted word budget, plus an optional closing question appended once to previews and exports. Duration is an estimate, not an automatic trim. Multipart output stays under manual control. Each multipart video narrates the full title followed by its part number; the splitter reserves words for that repeated introduction and the follow-up prompt. These are editing aids, not predictions of engagement.
+
 For the cleanest export, choose **High Quality — 1080p, 30 fps**. This mode uses less video compression, a more thorough encoding preset, and 320 kbps AAC audio. Fast mode retains the quicker 720p settings. Higher quality generally produces larger files and can take longer to render. Prepared backgrounds use the corresponding quality settings and are cached separately.
 
 Narration is normalized for consistent loudness, background audio automatically ducks during speech, and the final mix has peak protection. The voice selector loads the available English voices, and Test Voice plays up to 500 characters of your script. Voice model quality and source footage resolution still limit the final result; exporting 720p footage at 1080p cannot recover missing detail.

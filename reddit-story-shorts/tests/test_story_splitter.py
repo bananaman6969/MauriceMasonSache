@@ -35,3 +35,21 @@ def test_long_story_multi_part():
     assert parts[0]["total_parts"] == len(parts)
     assert "Like and follow for part 2!" in parts[0]["script"]
     assert "Part 2" in parts[1]["part_title"]
+    for part in parts:
+        assert part["script"].startswith(f"{title}. Part {part['part']}.")
+        assert part["word_count"] == len(part["script"].split())
+        assert part["word_count"] <= 50
+
+
+def test_multipart_title_preserves_punctuation_and_story_order():
+    title = "Why did this happen?"
+    sentences = [f"Story sentence number {i}." for i in range(15)]
+    parts = split_story_into_parts(title, " ".join(sentences), max_duration_seconds=10, add_cta=False)
+    assert len(parts) > 1
+    for part in parts:
+        assert part["script"].startswith(f"{title} Part {part['part']}.")
+        assert "?." not in part["script"]
+        assert "Like and follow" not in part["script"]
+    combined = " ".join(part["script"] for part in parts)
+    positions = [combined.index(sentence) for sentence in sentences]
+    assert positions == sorted(positions)

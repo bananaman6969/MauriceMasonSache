@@ -47,6 +47,7 @@ async function main() {
         context[name] = async () => {};
     }
     context.fetchPosts = async () => {};
+    context.updateScriptStats = () => {};
     startup();
     assert.equal(elements['fetch-posts-btn'].click, context.fetchPosts);
     console.log('Story fetch rendering, error recovery, and button binding passed.');

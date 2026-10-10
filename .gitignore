@@ -35,6 +35,12 @@ htmlcov/
 
 # OS and environment
 .env
+tiktok-uploader/config.json
+**/output/*.post.json
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+**/data/*.sqlite3.lock
 .venv/
 .venv-app/
 .venv313/

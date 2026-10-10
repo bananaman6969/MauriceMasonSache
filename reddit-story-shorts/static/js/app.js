@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadGallery();
     loadNarratorVoices();
     loadSubreddits().then(fetchPosts); // Populate the selector before fetching stories
+    updateScriptStats();
 });
 
 async function loadSubreddits() {
@@ -232,20 +233,33 @@ function selectStoryByIndex(index) {
     }
 }
 
-function updateScriptStats() {
+function getEditorStory() {
     const title = document.getElementById("editor-title").value;
-    const body = document.getElementById("editor-body").value;
+    const source = document.getElementById("editor-body").value.trim();
+    const question = document.getElementById("closing-question").value.trim();
+    const body = question && !source.endsWith(question) ? `${source}\n\n${question}`.trim() : source;
+    return { title, body };
+}
+
+function updateScriptStats() {
+    const {title, body} = getEditorStory();
     const combined = `${title} ${body}`.trim();
     const words = combined ? combined.split(/\s+/).length : 0;
-    const estSec = Math.round((words / 150) * 60);
+    const speed = 1 + parseInt(document.getElementById("voice-rate-select").value || "0", 10) / 100;
+    const estSec = Math.round((words / (150 * speed)) * 60);
 
     document.getElementById("word-count-badge").innerText = `${words} words`;
     document.getElementById("est-duration-badge").innerText = `⏱ ~${estSec}s`;
 
-    if (words > 175) {
-        document.getElementById("split-parts-toggle").checked = true;
-        toggleSplitOptions();
-    }
+    const hookWords = title.trim() ? title.trim().split(/\s+/).length : 0;
+    document.getElementById("hook-feedback").textContent = !hookWords ? "Add a short opening that introduces the conflict." :
+        hookWords > 20 ? `${hookWords} words. Try shortening the setup and leading with the conflict.` :
+        `${hookWords} words. Check that the conflict is clear and the story delivers the payoff.`;
+    const target = parseInt(document.getElementById("target-duration").value, 10);
+    const targetWords = Math.floor(target * 150 * speed / 60);
+    document.getElementById("pacing-feedback").textContent = words > targetWords ?
+        `About ${estSec}s. Trim roughly ${words - targetWords} words to approach ${target}s, or choose a longer target.` :
+        `About ${estSec}s of ${target}s. Keep a complete payoff; no need to fill every second.`;
 }
 
 function toggleSplitOptions() {
@@ -264,8 +278,7 @@ function toggleSplitOptions() {
 }
 
 async function previewParts() {
-    const title = document.getElementById("editor-title").value;
-    const body = document.getElementById("editor-body").value;
+    const {title, body} = getEditorStory();
     const maxSec = parseInt(document.getElementById("max-duration-select").value);
     const container = document.getElementById("parts-preview-container");
 
@@ -278,7 +291,7 @@ async function previewParts() {
         const res = await fetch("/api/split-story", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title, body, max_duration_seconds: maxSec }),
+            body: JSON.stringify({ title, body, max_duration_seconds: maxSec, censor_words: document.getElementById("censor-words-toggle").checked }),
         });
         const data = await res.json();
         if (data.parts) {
@@ -305,8 +318,7 @@ async function previewParts() {
 async function previewVoice() {
     const voice = document.getElementById("voice-select").value;
     const rate = document.getElementById("voice-rate-select").value;
-    const title = document.getElementById("editor-title").value;
-    const body = document.getElementById("editor-body").value;
+    const {title, body} = getEditorStory();
     const sampleText = `${title}. ${body}`.slice(0, 500) || "Testing this voice narration for Reddit stories.";
     const btn = document.getElementById("preview-voice-btn");
     const audio = document.getElementById("voice-preview-audio");
@@ -318,7 +330,7 @@ async function previewVoice() {
         const res = await fetch("/api/tts/preview", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: sampleText, voice, rate }),
+            body: JSON.stringify({ text: sampleText, voice, rate, censor_words: document.getElementById("censor-words-toggle").checked }),
         });
         const data = await res.json();
         if (data.success && data.preview_url) {
@@ -388,8 +400,9 @@ async function loadMusicList() {
 }
 
 async function startRender() {
-    const title = document.getElementById("editor-title").value.trim();
-    const body = document.getElementById("editor-body").value.trim();
+    const story = getEditorStory();
+    const title = story.title.trim();
+    const body = story.body.trim();
 
     if (!title) {
         alert("Please enter or select a story title first.");
@@ -431,6 +444,7 @@ async function startRender() {
         max_part_duration: parseInt(document.getElementById("max-duration-select").value),
         export_profile: document.getElementById("export-profile").value,
         encoding: document.getElementById("encoding-mode").value,
+        censor_words: document.getElementById("censor-words-toggle").checked,
     };
 
     try {
@@ -509,6 +523,26 @@ async function startRender() {
         renderBtn.classList.remove("opacity-50", "cursor-not-allowed");
         const cancelBtn = document.getElementById("cancel-render-btn");
         if (cancelBtn) cancelBtn.classList.add("hidden");
+    }
+}
+
+async function previewCensoredStory() {
+    const preview = document.getElementById("censor-preview");
+    preview.classList.remove("hidden");
+    preview.textContent = "Loading preview…";
+    try {
+        const response = await fetch("/api/story/censor-preview", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                ...getEditorStory(),
+                censor_words: document.getElementById("censor-words-toggle").checked,
+            }),
+        });
+        if (!response.ok) throw new Error("Preview unavailable");
+        const data = await response.json();
+        preview.textContent = `${data.title}\n\n${data.body}`;
+    } catch (error) {
+        preview.textContent = error.message;
     }
 }
 
