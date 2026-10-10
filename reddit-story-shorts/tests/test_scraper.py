@@ -19,6 +19,12 @@ def test_clean_story_text_strips_markdown_and_urls():
     assert cleaned == "Check this photo and visit for more."
 
 
+@pytest.mark.parametrize("word", ["so", "So", "SO"])
+def test_clean_story_text_preserves_so(word):
+    text = f"{word} I left, and it was so much better."
+    assert clean_story_text(text) == text
+
+
 def test_estimate_duration_seconds():
     # 150 words at 150 wpm = 60 seconds
     assert estimate_duration_seconds(150, 150) == 60.0

@@ -7,11 +7,17 @@ import logging
 import subprocess
 import tempfile
 import shutil
+import math
+import threading
+from pathlib import Path
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Tuple
 from core.ffmpeg_manager import get_ffmpeg_paths
 
 logger = logging.getLogger(__name__)
+SLICE_HISTORY_PATH = Path(__file__).resolve().parents[1] / "cache" / "background_slices.json"
+_slice_lock = threading.Lock()
+_last_slice_starts = {}
 
 GAMEPLAY_PRESETS = [
     {
@@ -31,6 +37,30 @@ GAMEPLAY_PRESETS = [
         "title": "GTA 5 Mega Ramp Stunts",
         "url": "https://www.youtube.com/watch?v=awJz5HaQUZA",
         "category": "GTA 5",
+    },
+    {
+        "id": "cooking_tomato_slicing",
+        "title": "Satisfying Cooking — Tomato Slicing",
+        "url": "https://assets.mixkit.co/videos/40534/40534-1080.mp4",
+        "source_url": "https://mixkit.co/free-stock-video/a-man-slices-a-tomato-40534/",
+        "category": "Cooking", "source": "stock",
+        "license": "Mixkit Stock Video Free License",
+    },
+    {
+        "id": "cooking_dough_mixing",
+        "title": "Satisfying Cooking — Dough Mixing",
+        "url": "https://assets.mixkit.co/videos/42464/42464-1080.mp4",
+        "source_url": "https://mixkit.co/free-stock-video/cook-mixing-flour-for-a-dough-42464/",
+        "category": "Cooking", "source": "stock",
+        "license": "Mixkit Stock Video Free License",
+    },
+    {
+        "id": "cooking_simmering_sauce",
+        "title": "Satisfying Cooking — Simmering Meatballs",
+        "url": "https://assets.mixkit.co/videos/3806/3806-1080.mp4",
+        "source_url": "https://mixkit.co/free-stock-video/cooking-meat-balls-in-sauce-3806/",
+        "category": "Cooking", "source": "stock",
+        "license": "Mixkit Stock Video Free License",
     },
 ]
 
@@ -115,22 +145,54 @@ def list_available_gameplay_videos() -> List[Dict[str, Any]]:
             if meta["duration"] > 0:
                 preset = next((p for p in GAMEPLAY_PRESETS if os.path.splitext(file_name)[0] == p["id"]), None)
                 meta["display_name"] = preset["title"] if preset else file_name
+                meta["category"] = "Cooking" if preset and preset["category"] == "Cooking" else "Gameplay" if preset else "Custom"
                 videos.append(meta)
 
     return videos
 
 
 def get_random_slice(video_path: str, required_duration: float) -> Tuple[float, float]:
-    """Calculate random start time and duration slice within the gameplay clip."""
+    """Choose a narration-length segment, avoiding the previous segment's start."""
+    if not math.isfinite(required_duration) or required_duration <= 0:
+        raise ValueError("Narration duration must be positive and finite")
     meta = probe_video_metadata(video_path)
     total_duration = meta["duration"]
 
-    if total_duration <= required_duration or total_duration <= 5.0:
+    if total_duration <= required_duration:
         return 0.0, required_duration
 
-    # Pick random start allowing a 3-second buffer at the end
-    max_start = max(0.0, total_duration - required_duration - 3.0)
-    start_time = round(random.uniform(0.0, max_start), 2)
+    max_start = total_duration - required_duration
+    key = os.path.normcase(os.path.abspath(video_path))
+    with _slice_lock:
+        try:
+            history = json.loads(SLICE_HISTORY_PATH.read_text(encoding="utf-8"))
+            if isinstance(history, dict):
+                _last_slice_starts.update(history)
+        except (OSError, ValueError):
+            pass
+        previous = _last_slice_starts.get(key)
+        if isinstance(previous, (int, float)) and math.isfinite(previous) and 0 <= previous <= max_start:
+            # Use a different whole section when space allows; still vary near-fit clips.
+            gap = min(required_duration, max_start / 4)
+            left_end = max(0.0, previous - gap)
+            right_start = min(max_start, previous + gap)
+            offset = random.uniform(0.0, left_end + max_start - right_start)
+            start_time = offset if left_end > 0 and offset <= left_end else right_start + offset - left_end
+        else:
+            start_time = random.uniform(0.0, max_start)
+        _last_slice_starts.pop(key, None)
+        _last_slice_starts[key] = start_time
+        while len(_last_slice_starts) > 256:
+            _last_slice_starts.pop(next(iter(_last_slice_starts)))
+        try:
+            SLICE_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=SLICE_HISTORY_PATH.parent,
+                                             suffix=".tmp", delete=False) as output:
+                json.dump(_last_slice_starts, output)
+                pending = output.name
+            os.replace(pending, SLICE_HISTORY_PATH)
+        except OSError:
+            logger.warning("Could not persist background segment history", exc_info=True)
 
     return start_time, required_duration
 
@@ -140,7 +202,10 @@ def download_youtube_gameplay(
     custom_name: Optional[str] = None,
     max_duration: Optional[float] = 300.0,
 ) -> str:
-    """Download gameplay video from YouTube using yt-dlp."""
+    """Download a curated stock background or a YouTube clip."""
+    preset = next((p for p in GAMEPLAY_PRESETS if p['url'] == url and p.get('source') == 'stock'), None)
+    if preset:
+        return download_stock_background(preset)
     import yt_dlp
 
     gameplay_dir = get_gameplay_dir()
@@ -184,4 +249,29 @@ def download_youtube_gameplay(
                 raise RuntimeError("Downloaded gameplay is not a playable video")
             os.replace(ready_path, final_path)
             return os.path.abspath(final_path)
+
+
+def download_stock_background(preset: Dict[str, Any]) -> str:
+    """Fetch only curated stock sources, validating before atomic installation."""
+    import requests
+    if preset not in GAMEPLAY_PRESETS or preset.get('source') != 'stock':
+        raise ValueError('Unknown stock background')
+    gameplay_dir = get_gameplay_dir()
+    final_path = os.path.join(gameplay_dir, preset['id'] + '.mp4')
+    if os.path.isfile(final_path) and probe_video_metadata(final_path)['duration'] > 0:
+        return os.path.abspath(final_path)
+    pending = os.path.join(gameplay_dir, '.downloads')
+    os.makedirs(pending, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=pending) as staging:
+        ready = os.path.join(staging, 'ready.mp4')
+        with requests.get(preset['url'], stream=True, timeout=(10, 45)) as response:
+            response.raise_for_status()
+            with open(ready, 'wb') as output:
+                for chunk in response.iter_content(1024 * 1024):
+                    if chunk:
+                        output.write(chunk)
+        if probe_video_metadata(ready)['duration'] <= 0:
+            raise RuntimeError('Stock download is not a playable video')
+        os.replace(ready, final_path)
+    return os.path.abspath(final_path)
 

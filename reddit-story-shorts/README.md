@@ -124,3 +124,9 @@ Execute the full test suite with pytest:
 ```bash
 pytest tests/ -v
 ```
+
+### Satisfying cooking backgrounds
+
+The Background Footage selector groups ready clips into Satisfying Cooking, Gameplay, and Custom. Cooking presets include tomato slicing (portrait 1080p), dough mixing, and simmering meatballs. Use the inline player to preview a background. Short clips loop automatically for the full narration. Add Background downloads a preset, reports failures, and selects the completed clip.
+
+Cooking footage comes from Mixkit under its Stock Video Free License: [tomato slicing](https://mixkit.co/free-stock-video/a-man-slices-a-tomato-40534/), [dough mixing](https://mixkit.co/free-stock-video/cook-mixing-flour-for-a-dough-42464/), and [simmering meatballs](https://mixkit.co/free-stock-video/cooking-meat-balls-in-sauce-3806/). Videos remain local in assets/gameplay and are ignored by Git; new checkouts can download them through Add Background.

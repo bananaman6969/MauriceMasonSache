@@ -29,7 +29,6 @@ ACRONYM_EXPANSIONS = {
     r"\bBIL\b": "brother in law",
     r"\bMIL\b": "mother in law",
     r"\bFIL\b": "father in law",
-    r"\bSO\b": "significant other",
     r"\bGF\b": "girlfriend",
     r"\bBF\b": "boyfriend",
 }

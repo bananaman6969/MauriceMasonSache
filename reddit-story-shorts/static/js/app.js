@@ -362,12 +362,19 @@ async function loadGameplayList() {
         select.innerHTML = "";
 
         if (data.videos && data.videos.length > 0) {
-            data.videos.forEach(v => {
-                const opt = document.createElement("option");
-                opt.value = v.filename;
-                opt.innerText = `${v.display_name || v.filename} (${Math.round(v.duration)}s, ${v.width}x${v.height})`;
-                select.appendChild(opt);
-            });
+            for (const category of ['Cooking', 'Gameplay', 'Custom']) {
+                const videos = data.videos.filter(v => (v.category || 'Custom') === category);
+                if (!videos.length) continue;
+                const group = document.createElement('optgroup');
+                group.label = category === 'Cooking' ? 'Satisfying Cooking' : category;
+                videos.forEach(v => {
+                    const opt = document.createElement("option");
+                    opt.value = v.filename;
+                    opt.innerText = `${v.display_name || v.filename} (${Math.round(v.duration)}s, ${v.width}x${v.height})`;
+                    group.appendChild(opt);
+                });
+                select.appendChild(group);
+            }
             if (data.videos.some(v => v.filename === selectedFilename)) select.value = selectedFilename;
         } else {
             const opt = document.createElement("option");
@@ -375,8 +382,24 @@ async function loadGameplayList() {
             opt.innerText = "Default Looping Background";
             select.appendChild(opt);
         }
+        updateBackgroundPreview();
     } catch (err) {
         console.error("Failed to load gameplay list:", err);
+    }
+}
+
+function updateBackgroundPreview() {
+    const video = document.getElementById('background-preview');
+    const filename = document.getElementById('gameplay-select').value;
+    if (!video) return;
+    video.pause();
+    video.hidden = !filename;
+    if (filename) {
+        video.src = '/api/gameplay/preview/' + encodeURIComponent(filename);
+        video.load();
+    } else {
+        video.removeAttribute('src');
+        video.load();
     }
 }
 
@@ -622,23 +645,46 @@ function closeDownloadModal() {
 
 function selectPresetUrl(url, id) {
     document.getElementById("custom-yt-url").value = url;
+    document.getElementById("custom-yt-url").dataset.presetId = id;
 }
 
 async function triggerGameplayDownload() {
     const url = document.getElementById("custom-yt-url").value.trim();
     if (!url) {
-        alert("Please enter or select a YouTube URL.");
+        alert("Please enter a YouTube URL or select a background preset.");
         return;
     }
     const formData = new FormData();
     formData.append("url", url);
+    const presetId = document.getElementById('custom-yt-url').dataset.presetId;
+    if (presetId) formData.append('name', presetId);
+    const status = document.getElementById('background-download-status');
+    const button = document.getElementById('background-download-button');
+    button.disabled = true;
+    status.textContent = 'Downloading background…';
 
     try {
         const res = await fetch("/api/gameplay/download", { method: "POST", body: formData });
         const data = await res.json();
-        alert(data.message || "Download started in background.");
-        closeDownloadModal();
+        if (!res.ok || !data.success) throw new Error(data.detail || 'Download could not start.');
+        for (;;) {
+            const check = await fetch('/api/gameplay/download-status/' + data.download_id);
+            const result = await check.json();
+            if (!check.ok) throw new Error(result.detail || 'Download status unavailable.');
+            if (result.status === 'failed') throw new Error(result.error);
+            if (result.status === 'complete') {
+                await loadGameplayList();
+                document.getElementById('gameplay-select').value = result.filename;
+                updateBackgroundPreview();
+                status.textContent = 'Ready — selected as your background.';
+                closeDownloadModal();
+                break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     } catch (err) {
-        alert("Download trigger failed: " + err.message);
+        status.textContent = 'Download failed: ' + err.message;
+    } finally {
+        button.disabled = false;
     }
 }

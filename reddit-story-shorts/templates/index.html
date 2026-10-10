@@ -321,7 +321,7 @@
         <div class="flex items-center space-x-3">
           <span class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-sm">4</span>
           <div>
-            <h2 class="text-base font-bold">Gameplay & Visuals</h2>
+            <h2 class="text-base font-bold">Background & Visuals</h2>
             <p class="text-xs text-gray-400">Select background clip and Reddit title card overlay</p>
           </div>
         </div>
@@ -329,15 +329,17 @@
         <div class="space-y-4">
           <div>
             <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-xs font-semibold text-gray-400">Gameplay Background Footage</label>
+              <label for="gameplay-select" class="block text-xs font-semibold text-gray-400">Background Footage</label>
               <button onclick="openDownloadModal()" class="text-xs text-emerald-400 hover:underline flex items-center space-x-1">
                 <i class="fa-brands fa-youtube"></i>
-                <span>Download Preset</span>
+                <span>Add Background</span>
               </button>
             </div>
-            <select id="gameplay-select" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+            <select id="gameplay-select" onchange="updateBackgroundPreview()" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
               <option value="">Default Gameplay Background</option>
             </select>
+            <video id="background-preview" hidden controls muted loop preload="metadata" aria-label="Selected background preview" class="w-full max-h-48 mt-3 rounded-lg bg-black"></video>
+            <p class="text-[11px] text-gray-400 mt-2">Choose gameplay or satisfying cooking footage. Short clips loop to cover your narration.</p>
           </div>
 
           <!-- Title Card Toggle -->
@@ -420,11 +422,11 @@
 
   <!-- YouTube Gameplay Preset Download Modal -->
   <div id="download-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-darkCard border border-darkBorder rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+    <div class="bg-darkCard border border-darkBorder rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between">
         <h3 class="font-bold text-base flex items-center space-x-2">
           <i class="fa-brands fa-youtube text-red-500"></i>
-          <span>Download Gameplay Footage</span>
+          <span>Add Background Footage</span>
         </h3>
         <button onclick="closeDownloadModal()" class="text-gray-400 hover:text-white">
           <i class="fa-solid fa-xmark text-lg"></i>
@@ -432,7 +434,7 @@
       </div>
 
       <div class="space-y-3">
-        <p class="text-xs text-gray-400">Choose a recommended no-copyright gameplay preset or paste a YouTube URL:</p>
+        <p class="text-xs text-gray-400">Choose a cooking or gameplay preset, or paste a YouTube URL. Cooking presets use Mixkit stock clips.</p>
         <div class="space-y-2">
           {% for p in gameplay_presets %}
           <div class="p-3 rounded-lg bg-darkBg border border-darkBorder flex items-center justify-between hover:border-reddit transition cursor-pointer" onclick="selectPresetUrl('{{ p.url }}', '{{ p.id }}')">
@@ -447,17 +449,18 @@
 
         <div class="pt-2">
           <label class="block text-xs font-semibold text-gray-400 mb-1">YouTube URL</label>
-          <input type="url" id="custom-yt-url" placeholder="https://www.youtube.com/watch?v=..." class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-reddit">
+          <input type="url" id="custom-yt-url" oninput="delete this.dataset.presetId" placeholder="Select a preset or paste a YouTube URL" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-reddit">
         </div>
       </div>
 
+      <p id="background-download-status" role="status" aria-live="polite" class="text-xs text-gray-400"></p>
       <div class="flex justify-end space-x-3 pt-2">
         <button onclick="closeDownloadModal()" class="px-4 py-2 rounded-lg bg-darkBorder text-xs hover:bg-gray-700">Cancel</button>
-        <button onclick="triggerGameplayDownload()" class="px-5 py-2 rounded-lg bg-reddit hover:bg-orange-600 text-xs font-bold text-white">Start Download</button>
+        <button id="background-download-button" onclick="triggerGameplayDownload()" class="px-5 py-2 rounded-lg bg-reddit hover:bg-orange-600 text-xs font-bold text-white">Start Download</button>
       </div>
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=creator-tools-2"></script>
+  <script src="/static/js/app.js?v=cooking-backgrounds-1"></script>
 </body>
 </html>

@@ -201,16 +201,46 @@ async def get_gameplay_list():
     return {"videos": videos, "presets": GAMEPLAY_PRESETS}
 
 
+@app.get("/api/gameplay/preview/{filename}")
+def preview_background(filename: str):
+    if os.path.basename(filename) != filename or os.path.splitext(filename)[1].lower() not in {'.mp4', '.mov', '.mkv', '.webm'}:
+        raise HTTPException(status_code=404, detail="Background not found")
+    path = os.path.join(get_gameplay_dir(), filename)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Background not found")
+    return FileResponse(path)
+
+
+background_downloads = {}
+
+
+@app.get("/api/gameplay/download-status/{download_id}")
+def background_download_status(download_id: str):
+    if download_id not in background_downloads:
+        raise HTTPException(status_code=404, detail="Download not found")
+    return background_downloads[download_id]
+
+
 @app.post("/api/gameplay/download")
 async def download_gameplay_video(background_tasks: BackgroundTasks, url: str = Form(...), name: Optional[str] = Form(None)):
+    download_id = uuid.uuid4().hex
+    # Retain recent download states without growing indefinitely.
+    for key in list(background_downloads):
+        if len(background_downloads) < 50:
+            break
+        if background_downloads[key]['status'] != 'downloading':
+            background_downloads.pop(key)
+    background_downloads[download_id] = {'status': 'downloading'}
     def _download():
         try:
-            download_youtube_gameplay(url, custom_name=name)
+            path = download_youtube_gameplay(url, custom_name=name)
+            background_downloads[download_id] = {'status': 'complete', 'filename': os.path.basename(path)}
         except Exception as err:
             logger.error(f"Failed to download gameplay: {err}")
+            background_downloads[download_id] = {'status': 'failed', 'error': str(err)}
 
     background_tasks.add_task(_download)
-    return {"success": True, "message": "Download started in background."}
+    return {"success": True, "download_id": download_id, "message": "Download started in background."}
 
 
 @app.post("/api/gameplay/upload")
@@ -435,6 +465,8 @@ async def _run_render_job(job_id: str, req: RenderJobRequest):
                 "filename": output_filename,
                 "video_url": f"/output/{output_filename}",
                 "duration": round(tts_res.duration, 1),
+                "background_start": round(start_time, 3),
+                "background_duration": tts_res.duration,
             })
 
         job["progress"] = 100.0
