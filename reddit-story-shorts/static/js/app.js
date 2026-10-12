@@ -7,6 +7,10 @@ let activeEventSource = null;
 let activeJobId = null;
 let currentPosts = [];
 let redditRetryTimer = null;
+let narratorVoices = [];
+let activeVoiceEngine = "edge";
+let kokoroAvailable = null;
+const rememberedVoices = { edge: "en-US-ChristopherNeural", kokoro: "kokoro:af_heart" };
 
 function escapeStoryText(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -48,24 +52,46 @@ async function loadSubreddits() {
 }
 
 async function loadNarratorVoices() {
+    const select = document.getElementById("voice-select");
+    narratorVoices = [...select.options].map(option => ({id: option.value, name: option.textContent}));
+    updateVoiceEngine();
     try {
         const response = await fetch("/api/voices");
         if (!response.ok) return;
         const data = await response.json();
-        const select = document.getElementById("voice-select");
-        const selected = select.value;
-        const existing = new Set([...select.options].map(option => option.value));
+        kokoroAvailable = data.kokoro_available === true;
+        document.querySelector('#voice-engine option[value="kokoro"]').disabled = !kokoroAvailable;
+        const existing = new Set(narratorVoices.map(voice => voice.id));
         for (const voice of data.voices || []) {
             if (existing.has(voice.id)) continue;
-            const option = document.createElement("option");
-            option.value = voice.id;
-            option.textContent = `${voice.name} — ${voice.locale}`;
-            select.appendChild(option);
+            narratorVoices.push(voice);
+            existing.add(voice.id);
         }
-        select.value = selected;
+        updateVoiceEngine();
     } catch (error) {
         console.warn("Using the built-in voice selection", error);
     }
+}
+
+function updateVoiceEngine() {
+    const select = document.getElementById("voice-select");
+    if (select.value) rememberedVoices[activeVoiceEngine] = select.value;
+    activeVoiceEngine = document.getElementById("voice-engine").value;
+    const voices = narratorVoices.filter(voice => voice.id.startsWith("kokoro:") === (activeVoiceEngine === "kokoro"));
+    select.replaceChildren(...voices.map(voice => {
+        const option = document.createElement("option");
+        option.value = voice.id;
+        option.textContent = voice.name;
+        return option;
+    }));
+    select.value = voices.some(voice => voice.id === rememberedVoices[activeVoiceEngine]) ? rememberedVoices[activeVoiceEngine] : voices[0]?.id || "";
+    document.getElementById("voice-engine-status").textContent = activeVoiceEngine === "kokoro" ?
+        (kokoroAvailable === false ? "Local voices need the optional Kokoro installation. See the setup guide in README." :
+        "Runs on this computer. First use loads the model; later demos and narration are cached.") :
+        "Online voices need an internet connection. Use Hear demo to compare the same sample with Kokoro.";
+    const audio = document.getElementById("voice-preview-audio");
+    audio.pause();
+    audio.classList.add("hidden");
 }
 
 function switchSourcingTab(tab) {
@@ -315,16 +341,25 @@ async function previewParts() {
     }
 }
 
-async function previewVoice() {
+async function previewVoice(useDemo = true) {
     const voice = document.getElementById("voice-select").value;
     const rate = document.getElementById("voice-rate-select").value;
     const {title, body} = getEditorStory();
-    const sampleText = `${title}. ${body}`.slice(0, 500) || "Testing this voice narration for Reddit stories.";
+    const demoText = "Sometimes, one small decision changes everything. I thought it was an ordinary day, until my best friend told me the truth. Here's what happened next.";
+    const storyText = [title.trim(), body.trim()].filter(Boolean).join(". ");
+    const sampleText = useDemo || !storyText ? demoText : storyText.slice(0, 500);
     const btn = document.getElementById("preview-voice-btn");
+    const scriptBtn = document.getElementById("preview-script-voice-btn");
     const audio = document.getElementById("voice-preview-audio");
+    const status = document.getElementById("voice-preview-status");
+    if (btn.disabled) return;
 
     btn.disabled = true;
+    scriptBtn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>...</span>`;
+    status.textContent = "Preparing voice preview…";
+    audio.pause();
+    audio.classList.add("hidden");
 
     try {
         const res = await fetch("/api/tts/preview", {
@@ -333,18 +368,24 @@ async function previewVoice() {
             body: JSON.stringify({ text: sampleText, voice, rate, censor_words: document.getElementById("censor-words-toggle").checked }),
         });
         const data = await res.json();
-        if (data.success && data.preview_url) {
+        if (res.ok && data.success && data.preview_url) {
             audio.src = data.preview_url;
             audio.classList.remove("hidden");
-            audio.play();
+            status.textContent = useDemo || !storyText ? "Voice demo ready." : "Script preview ready.";
+            try {
+                await audio.play();
+            } catch (_) {
+                status.textContent = "Preview ready. Press Play below to listen.";
+            }
         } else {
-            alert("TTS Preview failed: " + (data.error || "Unknown error"));
+            throw new Error(data.error || "Unable to generate voice preview");
         }
     } catch (err) {
-        alert("Error testing voice: " + err.message);
+        status.textContent = "Voice preview failed: " + err.message;
     } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-play"></i><span>Test</span>`;
+        scriptBtn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-play"></i><span>Hear demo</span>`;
     }
 }
 

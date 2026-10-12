@@ -1,4 +1,4 @@
-"""TTS Engine: Generates neural speech and exact word-level timings using edge-tts."""
+"""Cached speech and word timings from online Edge voices or local Kokoro."""
 
 import os
 import asyncio
@@ -93,7 +93,7 @@ async def generate_speech_with_timings(
     volume: str = "+0%",
     pitch: str = "+0Hz",
 ) -> TTSResult:
-    """Generate audio MP3 and word-level timestamps using edge-tts.
+    """Generate MP3 audio and provider word timings; kokoro: IDs select local synthesis.
     
     Args:
         text: Script text to narrate.
@@ -109,7 +109,8 @@ async def generate_speech_with_timings(
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     cache_dir = TTS_CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(json.dumps([text, voice, rate, volume, pitch, "word-v2"]).encode()).hexdigest()
+    timing_version = "kokoro-word-v2" if voice.startswith("kokoro:") else "word-v2"
+    key = hashlib.sha256(json.dumps([text, voice, rate, volume, pitch, timing_version]).encode()).hexdigest()
     metadata_path = cache_dir / f"{key}.json"
     try:
         cached = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -122,6 +123,17 @@ async def generate_speech_with_timings(
             return TTSResult(output_path, cached["duration"], words)
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    if voice.startswith("kokoro:"):
+        from core.kokoro_tts import generate_local_speech
+        result = await generate_local_speech(text, output_path, voice, rate, volume, pitch)
+        token = uuid.uuid4().hex
+        audio_name = f"{key}_{token}.mp3"
+        (cache_dir / audio_name).write_bytes(Path(output_path).read_bytes())
+        temp_metadata = cache_dir / f"{key}_{token}.json"
+        temp_metadata.write_text(json.dumps({"audio_file": audio_name, "duration": result.duration,
+            "words": [w.to_dict() for w in result.words]}), encoding="utf-8")
+        os.replace(temp_metadata, metadata_path)
+        return result
     communicate = edge_tts.Communicate(
         text=text,
         voice=voice,

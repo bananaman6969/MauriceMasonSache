@@ -262,21 +262,40 @@
 
         <div class="space-y-4">
           <div>
+            <label for="voice-engine" class="block text-xs font-semibold text-gray-400 mb-1.5">Voice Engine</label>
+            <select id="voice-engine" onchange="updateVoiceEngine()" class="w-full bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm">
+              <option value="edge" selected>Microsoft · Online voices</option>
+              <option value="kokoro" disabled>Kokoro · Local voices · Free</option>
+            </select>
+            <p id="voice-engine-status" class="text-xs text-gray-400 mt-2">Compare the same demo across engines to find your favorite.</p>
+          </div>
+          <div>
             <label class="block text-xs font-semibold text-gray-400 mb-1.5">Narrator Voice</label>
             <div class="flex space-x-2">
-              <select id="voice-select" class="flex-1 bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
+              <select id="voice-select" class="min-w-0 flex-1 bg-darkBg border border-darkBorder rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500">
                 <option value="en-US-ChristopherNeural" selected>Christopher (Authoritative / Narrative)</option>
                 <option value="en-US-GuyNeural">Guy (Casual / Energetic)</option>
                 <option value="en-US-EricNeural">Eric (Conversational / Warm)</option>
                 <option value="en-US-JennyNeural">Jenny (Clear / Expressive)</option>
                 <option value="en-US-AvaNeural">Ava (Young / Dynamic)</option>
                 <option value="en-GB-RyanNeural">Ryan (British Storyteller)</option>
+                <option value="kokoro:af_heart">Heart · American female</option>
+                <option value="kokoro:af_bella">Bella · American female</option>
+                <option value="kokoro:am_fenrir">Fenrir · American male</option>
+                <option value="kokoro:am_adam">Adam · American male</option>
+                <option value="kokoro:bf_emma">Emma · British female</option>
+                <option value="kokoro:bm_george">George · British male</option>
               </select>
-              <button onclick="previewVoice()" id="preview-voice-btn" class="px-3 py-2 bg-darkBorder hover:bg-gray-700 rounded-lg text-xs font-bold transition flex items-center space-x-1.5" title="Test Voice">
+              <button type="button" onclick="previewVoice(true)" id="preview-voice-btn" class="shrink-0 px-3 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-xs font-bold transition flex items-center space-x-1.5" title="Hear a sample of the selected voice">
                 <i class="fa-solid fa-play"></i>
-                <span>Test</span>
+                <span>Hear demo</span>
               </button>
             </div>
+            <div class="flex items-center gap-3 mt-2">
+              <button type="button" onclick="previewVoice(false)" id="preview-script-voice-btn" class="text-xs text-purple-300 hover:text-white underline">Preview my script</button>
+              <span class="text-xs text-gray-400">Demo uses your selected voice and speed.</span>
+            </div>
+            <p id="voice-preview-status" class="text-xs text-gray-400 mt-2" aria-live="polite"></p>
             <audio id="voice-preview-audio" class="hidden mt-2 w-full h-8" controls></audio>
           </div>
 
@@ -461,6 +480,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=cooking-backgrounds-1"></script>
+  <script src="/static/js/app.js?v=kokoro-1"></script>
 </body>
 </html>

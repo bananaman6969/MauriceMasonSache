@@ -148,7 +148,7 @@ def main():
     render_p = subparsers.add_parser("render", help="Render a story into a vertical short video")
     render_p.add_argument("--url", help="Direct Reddit post URL")
     render_p.add_argument("--sub", default="AmItheAsshole", help="Subreddit name to auto-pick top post")
-    render_p.add_argument("--voice", default="en-US-ChristopherNeural", help="Edge-TTS voice ID")
+    render_p.add_argument("--voice", default="en-US-ChristopherNeural", help="Edge voice ID or kokoro:af_heart (local Kokoro)")
     render_p.add_argument("--split", action="store_true", help="Auto-split long stories into multiple parts")
     render_p.add_argument("--max-duration", type=int, default=60, help="Max duration in seconds per part")
     render_p.add_argument("--bgm", action="store_true", help="Include background music")

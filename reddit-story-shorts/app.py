@@ -162,8 +162,12 @@ async def get_post_by_url(req: PostByUrlRequest):
 
 @app.get("/api/voices")
 async def list_voices():
-    voices = await get_available_voices(locale_prefix="en-")
-    return {"voices": voices}
+    try:
+        voices = await asyncio.wait_for(get_available_voices(locale_prefix="en-"), timeout=5)
+    except asyncio.TimeoutError:
+        voices = CURATED_VOICES
+    from core.kokoro_tts import VOICES, installed
+    return {"voices": [*voices, *VOICES], "kokoro_available": installed()}
 
 
 @app.post("/api/tts/preview")

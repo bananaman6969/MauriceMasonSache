@@ -35,6 +35,28 @@ python app.py
 ```
 Open your browser at [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
+### Optional local Kokoro voices
+
+Install the free local engine with Python 3.12:
+
+```powershell
+.\.venv-app\Scripts\python.exe -m pip install --no-compile -r requirements-kokoro.txt
+```
+
+If your project is in OneDrive, an alternative is to install the optional voice packages outside the synced folder. With Python 3.12 installed, run:
+
+```powershell
+py -3.12 -m pip install --no-compile --target "$env:LOCALAPPDATA\RedditStoryShorts\kokoro-packages" -r requirements-kokoro.txt
+```
+
+The app detects this Windows directory automatically. Keep the app's Python version at 3.12 when using it. `KOKORO_SITE_PACKAGES` can point to a different optional package directory.
+
+Restart the app, choose **Voice Engine → Kokoro**, select a voice, then click **Hear demo**. The identical demo text makes comparison with Microsoft's online voices easy. The first use downloads the model, pronunciation resources and selected voice; later inference runs locally on the CPU with no API key or per-video fee. American voices include Heart, Bella, Fenrir and Adam; British voices include Emma and George. Internet is required for initial downloads and for any voice not downloaded yet.
+
+Kokoro supplies synthesis-token timestamps. The app joins word fragments and punctuation, offsets each segment by its actual audio length, and uses those word times for caption highlighting. It does not estimate word positions by dividing the audio evenly. Missing timestamps produce an error rather than invented timing. Models are loaded lazily and shared; local synthesis is serialized to avoid competing for memory. Audio and timestamps reuse the existing narration cache. Microsoft voices remain available when the optional dependencies are not installed.
+
+Model downloads live under `cache/kokoro/` unless `HF_HOME` is set externally. New computers need the optional installation and their own initial downloads, or a copy of the cache. The existing text cleaner preserves “so”, “So”, and “SO” instead of expanding them into “significant other”.
+
 ### Faster rendering
 
 The script editor includes optional **Creator-style word censoring**, enabled in the dashboard by default: raped → gr*ped, murdered → unalived, fucking → f*cking. The expanded English list covers profanity, violence, abuse, sexual terms, self-harm and drug references with common inflections. Voiceover uses pronounceable alternatives (graped, unalived, effing); captions restore the masked spellings and punctuation without changing word timings, including around contractions. Title cards, script previews and split previews use the display versions. The editable source stays unchanged. Review previews: automatic word replacements cannot interpret context. This is not a content moderation system and does not guarantee TikTok distribution or Creator Rewards eligibility.
@@ -45,7 +67,7 @@ The editor's creator widgets show opening-hook feedback, a duration target and a
 
 For the cleanest export, choose **High Quality — 1080p, 30 fps**. This mode uses less video compression, a more thorough encoding preset, and 320 kbps AAC audio. Fast mode retains the quicker 720p settings. Higher quality generally produces larger files and can take longer to render. Prepared backgrounds use the corresponding quality settings and are cached separately.
 
-Narration is normalized for consistent loudness, background audio automatically ducks during speech, and the final mix has peak protection. The voice selector loads the available English voices, and Test Voice plays up to 500 characters of your script. Voice model quality and source footage resolution still limit the final result; exporting 720p footage at 1080p cannot recover missing detail.
+Narration is normalized for consistent loudness, background audio automatically ducks during speech, and the final mix has peak protection. The voice selector loads the available English voices. **Hear demo** plays a fixed narration sample using your selected voice and speed, even without a story. **Preview my script** plays up to 500 characters from your editor. Both show replay controls and a manual Play option when autoplay is blocked. Voice model quality and source footage resolution still limit the final result; exporting 720p footage at 1080p cannot recover missing detail.
 
 Choose **Fast — 720p, 30 fps** for quicker exports, or **Full HD — 1080p, 30 fps** for maximum resolution. Automatic encoding tests NVIDIA, Intel Quick Sync, and AMD encoders on the current machine and uses a working encoder when available. Failed hardware renders retry on the CPU. Captions and title cards remain proportional in either mode.
 
